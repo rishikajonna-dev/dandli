@@ -16,7 +16,8 @@ export const NodeCard = React.memo(function NodeCard({
   onEditStart,
   onEditSave,
   onEditCancel,
-  onToggleCollapse
+  onToggleCollapse,
+  onContextMenu
 }) {
   const [draft, setDraft] = useState(layoutNode.label);
   const inputRef = useRef(null);
@@ -69,6 +70,11 @@ export const NodeCard = React.memo(function NodeCard({
       }}
       onMouseEnter={() => onHover(layoutNode.id)}
       onMouseLeave={() => onHover(null)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onContextMenu?.(layoutNode.id, event.clientX, event.clientY);
+      }}
       role="button"
       tabIndex={0}
     >

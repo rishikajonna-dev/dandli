@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Crosshair, Focus, Minus, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Connector } from './Connector.jsx';
 import { NodeCard } from './NodeCard.jsx';
@@ -61,12 +61,26 @@ function relationSets(root, selectedNodeId) {
   };
 }
 
-export function MapCanvas({ tree, expandedOverflow, setExpandedOverflow, onToggleOverflow, onRenameNode, onAddChild, onDeleteNode }) {
-  const [selectedNodeId, setSelectedNodeId] = useState(tree.id);
+export function MapCanvas({
+  tree,
+  selectedNodeId,
+  setSelectedNodeId,
+  focusNodeId,
+  setFocusNodeId,
+  editingNodeId,
+  setEditingNodeId,
+  collapsedNodeIds,
+  setCollapsedNodeIds,
+  expandedOverflow,
+  setExpandedOverflow,
+  readOnly = false,
+  onToggleOverflow,
+  onRenameNode,
+  onAddChild,
+  onDeleteNode,
+  onContextMenu
+}) {
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
-  const [focusNodeId, setFocusNodeId] = useState(null);
-  const [editingNodeId, setEditingNodeId] = useState(null);
-  const [collapsedNodeIds, setCollapsedNodeIds] = useState(() => new Set());
   const viewportRef = useRef(null);
   const zoomPan = useZoomPan({ zoom: 0.82, panX: 0, panY: 0 });
 
@@ -109,6 +123,30 @@ export function MapCanvas({ tree, expandedOverflow, setExpandedOverflow, onToggl
     centerView();
   }, []);
 
+  useEffect(() => {
+    function zoomIn() {
+      zoomPan.zoomIn();
+    }
+
+    function zoomOut() {
+      zoomPan.zoomOut();
+    }
+
+    function fit() {
+      centerView();
+    }
+
+    window.addEventListener('clasp-zoom-in', zoomIn);
+    window.addEventListener('clasp-zoom-out', zoomOut);
+    window.addEventListener('clasp-fit', fit);
+
+    return () => {
+      window.removeEventListener('clasp-zoom-in', zoomIn);
+      window.removeEventListener('clasp-zoom-out', zoomOut);
+      window.removeEventListener('clasp-fit', fit);
+    };
+  }, [zoomPan]);
+
   function selectNode(id) {
     setSelectedNodeId(id);
     setEditingNodeId(null);
@@ -129,11 +167,13 @@ export function MapCanvas({ tree, expandedOverflow, setExpandedOverflow, onToggl
   }
 
   function saveEdit(id, label) {
+    if (readOnly) return;
     onRenameNode(id, label);
     setEditingNodeId(null);
   }
 
   function addChildToSelected() {
+    if (readOnly) return;
     const parent = findNode(tree, activeSelectedId);
     if (!parent || layout.byId.get(activeSelectedId)?.isCollapsedIndicator) return;
 
@@ -158,6 +198,7 @@ export function MapCanvas({ tree, expandedOverflow, setExpandedOverflow, onToggl
   }
 
   function deleteSelected() {
+    if (readOnly) return;
     if (activeSelectedId === tree.id) return;
     onDeleteNode(activeSelectedId);
     setExpandedOverflow((current) => {
@@ -197,19 +238,23 @@ export function MapCanvas({ tree, expandedOverflow, setExpandedOverflow, onToggl
   return (
     <section className={`map-canvas ${semanticZoomClass}`} aria-label="CLASP mind map">
       <div className="canvas-toolbar">
-        <button type="button" className="tool-button" onClick={addChildToSelected} title="Add child node">
-          <Plus size={16} />
-        </button>
-        <button
-          type="button"
-          className="tool-button danger"
-          onClick={deleteSelected}
-          disabled={activeSelectedId === tree.id}
-          title="Delete selected node"
-        >
-          <Trash2 size={16} />
-        </button>
-        <span className="tool-divider" />
+        {!readOnly && (
+          <>
+            <button type="button" className="tool-button" onClick={addChildToSelected} title="Add child node">
+              <Plus size={16} />
+            </button>
+            <button
+              type="button"
+              className="tool-button danger"
+              onClick={deleteSelected}
+              disabled={activeSelectedId === tree.id}
+              title="Delete selected node"
+            >
+              <Trash2 size={16} />
+            </button>
+            <span className="tool-divider" />
+          </>
+        )}
         <button type="button" className="tool-button" onClick={focusSelected} title="Focus selected branch">
           <Focus size={16} />
         </button>
@@ -301,6 +346,7 @@ export function MapCanvas({ tree, expandedOverflow, setExpandedOverflow, onToggl
                   onEditSave={saveEdit}
                   onEditCancel={() => setEditingNodeId(null)}
                   onToggleCollapse={toggleCollapse}
+                  onContextMenu={onContextMenu}
                 />
               );
             })}

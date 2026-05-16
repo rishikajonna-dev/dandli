@@ -1,0 +1,277 @@
+import React, { useMemo, useState } from 'react';
+import { MapCanvas } from '../components/MapCanvas.jsx';
+import { OutlinePanel } from '../components/OutlinePanel.jsx';
+import { ContextMenu } from '../components/ContextMenu.jsx';
+import { Toolbar } from '../components/Toolbar.jsx';
+import { useAutosave } from '../hooks/useAutosave.js';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
+import { exportJson } from '../utils/exportJson.js';
+import { importJsonFile } from '../utils/importJson.js';
+import { exportSvg } from '../utils/exportSvg.js';
+import { exportPng } from '../utils/exportPng.js';
+
+function nodeLabel(node) {
+  return node?.label ?? node?.title ?? node?.text ?? 'Untitled';
+}
+
+function walkTree(node, visitor, parent = null) {
+  visitor(node, parent);
+  (node.children ?? []).forEach((child) => walkTree(child, visitor, node));
+}
+
+function findNode(root, id) {
+  let found = null;
+  walkTree(root, (node) => {
+    if (node.id === id) found = node;
+  });
+  return found;
+}
+
+function renameNode(node, id, label) {
+  if (node.id === id) return { ...node, label };
+  return { ...node, children: (node.children ?? []).map((child) => renameNode(child, id, label)) };
+}
+
+function addChildNode(node, parentId, childNode) {
+  if (node.id === parentId) {
+    return { ...node, collapsed: false, children: [...(node.children ?? []), childNode] };
+  }
+  return { ...node, children: (node.children ?? []).map((child) => addChildNode(child, parentId, childNode)) };
+}
+
+function deleteNode(node, id) {
+  return { ...node, children: (node.children ?? []).filter((child) => child.id !== id).map((child) => deleteNode(child, id)) };
+}
+
+function colorNode(node, id, color) {
+  if (node.id === id) return { ...node, color };
+  return { ...node, children: (node.children ?? []).map((child) => colorNode(child, id, color)) };
+}
+
+function countNodes(root) {
+  let count = 0;
+  walkTree(root, () => {
+    count += 1;
+  });
+  return count;
+}
+
+function toSet(value) {
+  return value instanceof Set ? value : new Set(value ?? []);
+}
+
+export function Workspace({
+  appState,
+  setAppState,
+  replaceAppState,
+  canUndo,
+  canRedo,
+  undo,
+  redo,
+  onBack,
+  readOnly = false,
+  onUpgradeNeeded
+}) {
+  const map = appState.maps.find((item) => item.id === appState.activeMapId) ?? appState.maps[0];
+  const selectedNodeId = appState.selectedNodeId ?? map.root.id;
+  const focusNodeId = appState.focusNodeId ?? null;
+  const editingNodeId = appState.editingNodeId ?? null;
+  const collapsedNodeIds = useMemo(() => toSet(appState.collapsedNodeIds), [appState.collapsedNodeIds]);
+  const expandedOverflow = useMemo(() => toSet(appState.expandedOverflow), [appState.expandedOverflow]);
+  const [outlineOpen, setOutlineOpen] = useState(true);
+  const [menu, setMenu] = useState(null);
+  const autosaveStatus = useAutosave('clasp-autosave', appState);
+
+  function updateCurrentMap(updater) {
+    setAppState((current) => ({
+      ...current,
+      maps: current.maps.map((item) => {
+        if (item.id !== map.id) return item;
+        const next = updater(item);
+        return { ...next, updatedAt: new Date().toISOString() };
+      })
+    }));
+  }
+
+  function setSelectedNodeId(id) {
+    replaceAppState((current) => ({ ...current, selectedNodeId: id }));
+  }
+
+  function setFocusNodeId(id) {
+    replaceAppState((current) => ({ ...current, focusNodeId: id }));
+  }
+
+  function setEditingNodeId(id) {
+    replaceAppState((current) => ({ ...current, editingNodeId: id }));
+  }
+
+  function setCollapsedNodeIds(updater) {
+    setAppState((current) => {
+      const next = typeof updater === 'function' ? updater(new Set(current.collapsedNodeIds ?? [])) : updater;
+      return { ...current, collapsedNodeIds: [...next] };
+    });
+  }
+
+  function setExpandedOverflow(updater) {
+    setAppState((current) => {
+      const next = typeof updater === 'function' ? updater(new Set(current.expandedOverflow ?? [])) : updater;
+      return { ...current, expandedOverflow: [...next] };
+    });
+  }
+
+  function rename(id, label) {
+    if (readOnly) return;
+    updateCurrentMap((currentMap) => ({ ...currentMap, root: renameNode(currentMap.root, id, label), title: id === currentMap.root.id ? label : currentMap.title }));
+  }
+
+  function addChild(parentId = selectedNodeId) {
+    if (readOnly) return;
+    if ((appState.totalNodesLifetime ?? 0) >= 150) {
+      onUpgradeNeeded?.('Free plan includes 150 total nodes lifetime.');
+      return;
+    }
+    const child = { id: `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, label: 'New idea', children: [], collapsed: false, color: null, metadata: {} };
+    updateCurrentMap((currentMap) => ({ ...currentMap, root: addChildNode(currentMap.root, parentId, child) }));
+    replaceAppState((current) => ({ ...current, totalNodesLifetime: (current.totalNodesLifetime ?? countNodes(map.root)) + 1, selectedNodeId: parentId }));
+  }
+
+  function deleteSelected(id = selectedNodeId) {
+    if (readOnly || id === map.root.id) return;
+    updateCurrentMap((currentMap) => ({ ...currentMap, root: deleteNode(currentMap.root, id) }));
+    replaceAppState((current) => ({ ...current, selectedNodeId: map.root.id, focusNodeId: null, editingNodeId: null }));
+  }
+
+  function toggleCollapse(id = selectedNodeId) {
+    setCollapsedNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setExpandedOverflow((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleOverflow(id) {
+    setExpandedOverflow((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function changeColor(id, color) {
+    if (readOnly) return;
+    updateCurrentMap((currentMap) => ({ ...currentMap, root: colorNode(currentMap.root, id, color) }));
+  }
+
+  function share() {
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(map))));
+    const url = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
+    navigator.clipboard?.writeText(url);
+    window.history.replaceState(null, '', url);
+  }
+
+  function importMap(file) {
+    importJsonFile(file).then((imported) => {
+      setAppState((current) => ({ ...current, maps: [imported, ...current.maps], activeMapId: imported.id, selectedNodeId: imported.root.id }));
+    }).catch(() => onUpgradeNeeded?.('Import failed. Choose a valid CLASP JSON map.'));
+  }
+
+  const shortcutActions = useMemo(() => ({
+    addChild,
+    rename: () => setEditingNodeId(selectedNodeId),
+    deleteNode: deleteSelected,
+    toggleCollapse,
+    escape: () => editingNodeId ? setEditingNodeId(null) : setSelectedNodeId(map.root.id),
+    undo,
+    redo,
+    zoomIn: () => window.dispatchEvent(new CustomEvent('clasp-zoom-in')),
+    zoomOut: () => window.dispatchEvent(new CustomEvent('clasp-zoom-out')),
+    fit: () => window.dispatchEvent(new CustomEvent('clasp-fit'))
+  }), [editingNodeId, redo, selectedNodeId, undo]);
+
+  useKeyboardShortcuts(shortcutActions, true);
+
+  function handleContextAction(action, color) {
+    const id = menu?.nodeId ?? selectedNodeId;
+    setMenu(null);
+    if (action === 'add') addChild(id);
+    if (action === 'rename') setEditingNodeId(id);
+    if (action === 'delete') deleteSelected(id);
+    if (action === 'collapse') toggleCollapse(id);
+    if (action === 'focus') setFocusNodeId(id);
+    if (action === 'color') changeColor(id, color);
+  }
+
+  if (!map) return null;
+
+  return (
+    <div className="workspace">
+      <header className="workspace-top">
+        <button type="button" className="back-button" onClick={onBack}>CLASP</button>
+        <div>
+          <p className="eyebrow">{readOnly ? 'Read-only share' : 'Workspace'}</p>
+          <h1>{map.title}</h1>
+        </div>
+        <Toolbar
+          autosaveStatus={readOnly ? 'Read only' : autosaveStatus}
+          outlineOpen={outlineOpen}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          readOnly={readOnly}
+          onAddChild={() => addChild()}
+          onDelete={() => deleteSelected()}
+          onUndo={undo}
+          onRedo={redo}
+          onZoomIn={() => window.dispatchEvent(new CustomEvent('clasp-zoom-in'))}
+          onZoomOut={() => window.dispatchEvent(new CustomEvent('clasp-zoom-out'))}
+          onFit={() => window.dispatchEvent(new CustomEvent('clasp-fit'))}
+          onToggleOutline={() => setOutlineOpen((value) => !value)}
+          onExportJson={() => exportJson(map)}
+          onExportSvg={() => exportSvg(map, appState)}
+          onExportPng={() => exportPng(map, appState)}
+          onImportJson={importMap}
+          onShare={share}
+        />
+      </header>
+      <div className={`workspace-body ${outlineOpen ? 'with-outline' : ''}`}>
+        <MapCanvas
+          tree={map.root}
+          selectedNodeId={selectedNodeId}
+          setSelectedNodeId={setSelectedNodeId}
+          focusNodeId={focusNodeId}
+          setFocusNodeId={setFocusNodeId}
+          editingNodeId={editingNodeId}
+          setEditingNodeId={setEditingNodeId}
+          collapsedNodeIds={collapsedNodeIds}
+          setCollapsedNodeIds={setCollapsedNodeIds}
+          expandedOverflow={expandedOverflow}
+          setExpandedOverflow={setExpandedOverflow}
+          readOnly={readOnly}
+          onToggleOverflow={toggleOverflow}
+          onRenameNode={rename}
+          onAddChild={addChild}
+          onDeleteNode={deleteSelected}
+          onContextMenu={(nodeId, x, y) => !readOnly && setMenu({ nodeId, x, y })}
+        />
+        {outlineOpen && (
+          <OutlinePanel
+            root={map.root}
+            selectedId={selectedNodeId}
+            collapsedNodeIds={collapsedNodeIds}
+            readOnly={readOnly}
+            onSelect={setSelectedNodeId}
+            onRename={rename}
+            onToggleCollapse={toggleCollapse}
+          />
+        )}
+      </div>
+      <ContextMenu menu={menu} onClose={() => setMenu(null)} onAction={handleContextAction} />
+    </div>
+  );
+}
