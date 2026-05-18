@@ -1,13 +1,23 @@
 import React from 'react';
+import { Sparkles, Plus, Compass } from 'lucide-react';
 
 export function EmptyState({ onNewMap, onConvertNotes }) {
   return (
     <section className="empty-state">
-      <h2>Your first map is waiting.</h2>
-      <p>Start from a blank canvas or paste notes and let Clasp draft the structure.</p>
+      <div className="empty-illustration">
+        <Compass size={48} className="empty-icon" />
+      </div>
+      <h2>No mind maps yet.</h2>
+      <p>Create your first map or convert notes into a visual structure.</p>
       <div className="empty-actions">
-        <button type="button" className="primary-action" onClick={onNewMap}>New Map</button>
-        <button type="button" className="secondary-action" onClick={onConvertNotes}>Convert Notes</button>
+        <button type="button" className="primary-action" onClick={onNewMap}>
+          <Plus size={16} />
+          Build from Scratch
+        </button>
+        <button type="button" className="secondary-action" onClick={onConvertNotes}>
+          <Sparkles size={16} />
+          Convert Notes
+        </button>
       </div>
     </section>
   );

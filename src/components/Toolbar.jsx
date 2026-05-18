@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Download, FileDown, FileJson, Image, PanelRight, Plus, Redo2, Share2, Trash2, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Download, FileDown, FileJson, Image, PanelRight, Plus, Redo2, Share2, Trash2, Undo2, Upload, ZoomIn, ZoomOut, FileText } from 'lucide-react';
 
 export function Toolbar({
   autosaveStatus,
@@ -7,6 +7,8 @@ export function Toolbar({
   canUndo,
   canRedo,
   readOnly,
+  selectedNodeId,
+  rootId,
   onAddChild,
   onDelete,
   onUndo,
@@ -18,6 +20,7 @@ export function Toolbar({
   onExportJson,
   onExportSvg,
   onExportPng,
+  onExportMarkdown,
   onImportJson,
   onShare
 }) {
@@ -28,8 +31,8 @@ export function Toolbar({
       <span className={`save-status ${autosaveStatus.toLowerCase().replaceAll(' ', '-')}`}>{autosaveStatus}</span>
       {!readOnly && (
         <>
-          <button type="button" title="Add child" onClick={onAddChild}><Plus size={16} /></button>
-          <button type="button" title="Delete selected" onClick={onDelete}><Trash2 size={16} /></button>
+          <button type="button" title="Add child" onClick={onAddChild} disabled={!selectedNodeId}><Plus size={16} /></button>
+          <button type="button" title="Delete selected" onClick={onDelete} disabled={!selectedNodeId || selectedNodeId === rootId}><Trash2 size={16} /></button>
           <span className="tool-divider" />
           <button type="button" title="Undo" onClick={onUndo} disabled={!canUndo}><Undo2 size={16} /></button>
           <button type="button" title="Redo" onClick={onRedo} disabled={!canRedo}><Redo2 size={16} /></button>
@@ -44,6 +47,7 @@ export function Toolbar({
       <button type="button" title="Export JSON" onClick={onExportJson}><FileJson size={16} /></button>
       <button type="button" title="Export SVG" onClick={onExportSvg}><FileDown size={16} /></button>
       <button type="button" title="Export PNG" onClick={onExportPng}><Image size={16} /></button>
+      <button type="button" title="Export Markdown" onClick={onExportMarkdown}><FileText size={16} /></button>
       {!readOnly && (
         <>
           <button type="button" title="Import JSON" onClick={() => fileRef.current?.click()}><Upload size={16} /></button>
@@ -51,7 +55,7 @@ export function Toolbar({
             const file = event.target.files?.[0];
             if (file) onImportJson(file);
             event.target.value = '';
-          }} />
+            }} />
         </>
       )}
       <button type="button" title="Share read-only link" onClick={onShare}><Share2 size={16} /></button>

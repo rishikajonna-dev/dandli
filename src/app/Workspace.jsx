@@ -9,6 +9,7 @@ import { exportJson } from '../utils/exportJson.js';
 import { importJsonFile } from '../utils/importJson.js';
 import { exportSvg } from '../utils/exportSvg.js';
 import { exportPng } from '../utils/exportPng.js';
+import { exportMarkdown } from '../utils/exportMarkdown.js';
 
 function nodeLabel(node) {
   return node?.label ?? node?.title ?? node?.text ?? 'Untitled';
@@ -73,13 +74,14 @@ export function Workspace({
   onUpgradeNeeded
 }) {
   const map = appState.maps.find((item) => item.id === appState.activeMapId) ?? appState.maps[0];
-  const selectedNodeId = appState.selectedNodeId ?? map.root.id;
+  const selectedNodeId = appState.selectedNodeId !== undefined ? appState.selectedNodeId : map.root.id;
   const focusNodeId = appState.focusNodeId ?? null;
   const editingNodeId = appState.editingNodeId ?? null;
   const collapsedNodeIds = useMemo(() => toSet(appState.collapsedNodeIds), [appState.collapsedNodeIds]);
   const expandedOverflow = useMemo(() => toSet(appState.expandedOverflow), [appState.expandedOverflow]);
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [menu, setMenu] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
   const autosaveStatus = useAutosave('clasp-autosave', appState);
 
   function updateCurrentMap(updater) {
@@ -124,19 +126,36 @@ export function Workspace({
     updateCurrentMap((currentMap) => ({ ...currentMap, root: renameNode(currentMap.root, id, label), title: id === currentMap.root.id ? label : currentMap.title }));
   }
 
-  function addChild(parentId = selectedNodeId) {
+  function addChild(parentId = selectedNodeId, childNode = null) {
     if (readOnly) return;
+    if (!parentId) return;
     if ((appState.totalNodesLifetime ?? 0) >= 150) {
       onUpgradeNeeded?.('Free plan includes 150 total nodes lifetime.');
       return;
     }
-    const child = { id: `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, label: 'New idea', children: [], collapsed: false, color: null, metadata: {} };
+    const child = childNode ?? { id: `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, label: 'New idea', children: [], collapsed: false, color: null, metadata: {} };
     updateCurrentMap((currentMap) => ({ ...currentMap, root: addChildNode(currentMap.root, parentId, child) }));
-    replaceAppState((current) => ({ ...current, totalNodesLifetime: (current.totalNodesLifetime ?? countNodes(map.root)) + 1, selectedNodeId: parentId }));
+    replaceAppState((current) => ({
+      ...current,
+      totalNodesLifetime: (current.totalNodesLifetime ?? countNodes(map.root)) + 1,
+      selectedNodeId: child.id,
+      editingNodeId: child.id
+    }));
+  }
+
+  function addSibling(nodeId = selectedNodeId) {
+    if (readOnly) return;
+    if (!nodeId || nodeId === map.root.id) return;
+    let parent = null;
+    walkTree(map.root, (node, parentNode) => {
+      if (node.id === nodeId) parent = parentNode;
+    });
+    if (!parent) return;
+    addChild(parent.id);
   }
 
   function deleteSelected(id = selectedNodeId) {
-    if (readOnly || id === map.root.id) return;
+    if (readOnly || !id || id === map.root.id) return;
     updateCurrentMap((currentMap) => ({ ...currentMap, root: deleteNode(currentMap.root, id) }));
     replaceAppState((current) => ({ ...current, selectedNodeId: map.root.id, focusNodeId: null, editingNodeId: null }));
   }
@@ -176,6 +195,16 @@ export function Workspace({
     window.history.replaceState(null, '', url);
   }
 
+  function handleExportMarkdown() {
+    const md = exportMarkdown(map);
+    navigator.clipboard?.writeText(md).then(() => {
+      setSuccessMessage('Markdown copied to clipboard!');
+      setTimeout(() => setSuccessMessage(''), 2500);
+    }).catch(() => {
+      alert('Failed to copy to clipboard.');
+    });
+  }
+
   function importMap(file) {
     importJsonFile(file).then((imported) => {
       setAppState((current) => ({ ...current, maps: [imported, ...current.maps], activeMapId: imported.id, selectedNodeId: imported.root.id }));
@@ -184,6 +213,7 @@ export function Workspace({
 
   const shortcutActions = useMemo(() => ({
     addChild,
+    addSibling,
     rename: () => setEditingNodeId(selectedNodeId),
     deleteNode: deleteSelected,
     toggleCollapse,
@@ -201,6 +231,7 @@ export function Workspace({
     const id = menu?.nodeId ?? selectedNodeId;
     setMenu(null);
     if (action === 'add') addChild(id);
+    if (action === 'sibling') addSibling(id);
     if (action === 'rename') setEditingNodeId(id);
     if (action === 'delete') deleteSelected(id);
     if (action === 'collapse') toggleCollapse(id);
@@ -224,6 +255,8 @@ export function Workspace({
           canUndo={canUndo}
           canRedo={canRedo}
           readOnly={readOnly}
+          selectedNodeId={selectedNodeId}
+          rootId={map.root.id}
           onAddChild={() => addChild()}
           onDelete={() => deleteSelected()}
           onUndo={undo}
@@ -235,6 +268,7 @@ export function Workspace({
           onExportJson={() => exportJson(map)}
           onExportSvg={() => exportSvg(map, appState)}
           onExportPng={() => exportPng(map, appState)}
+          onExportMarkdown={handleExportMarkdown}
           onImportJson={importMap}
           onShare={share}
         />
@@ -271,7 +305,12 @@ export function Workspace({
           />
         )}
       </div>
-      <ContextMenu menu={menu} onClose={() => setMenu(null)} onAction={handleContextAction} />
+      <ContextMenu menu={menu} rootId={map.root.id} onClose={() => setMenu(null)} onAction={handleContextAction} />
+      {successMessage && (
+        <div className="toast" role="status" aria-live="polite">
+          {successMessage}
+        </div>
+      )}
     </div>
   );
 }

@@ -19,11 +19,21 @@ function OutlineItem({ node, depth, selectedId, collapsedNodeIds, readOnly, onSe
     if (selected) ref.current?.scrollIntoView({ block: 'nearest' });
   }, [selected]);
 
+  const depthClass = depth === 0 ? 'is-root' : depth === 1 ? 'is-level-1' : 'is-level-deeper';
+
   return (
-    <div>
-      <div ref={ref} className={`outline-item ${selected ? 'selected' : ''}`} style={{ paddingLeft: 12 + depth * 16 }}>
-        <button type="button" className="outline-toggle" disabled={!hasChildren} onClick={() => onToggleCollapse(node.id)}>
-          {hasChildren ? (collapsed ? '+' : '-') : ''}
+    <div className="outline-branch">
+      <div
+        ref={ref}
+        className={`outline-item ${selected ? 'selected' : ''} ${depthClass}`}
+      >
+        <button
+          type="button"
+          className="outline-toggle"
+          disabled={!hasChildren}
+          onClick={() => onToggleCollapse(node.id)}
+        >
+          {hasChildren ? (collapsed ? '▸' : '▾') : ''}
         </button>
         <input
           value={draft}
@@ -40,19 +50,23 @@ function OutlineItem({ node, depth, selectedId, collapsedNodeIds, readOnly, onSe
           }}
         />
       </div>
-      {!collapsed && (node.children ?? []).map((child) => (
-        <OutlineItem
-          key={child.id}
-          node={child}
-          depth={depth + 1}
-          selectedId={selectedId}
-          collapsedNodeIds={collapsedNodeIds}
-          readOnly={readOnly}
-          onSelect={onSelect}
-          onRename={onRename}
-          onToggleCollapse={onToggleCollapse}
-        />
-      ))}
+      {!collapsed && hasChildren && (
+        <div className="outline-children">
+          {(node.children ?? []).map((child) => (
+            <OutlineItem
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              selectedId={selectedId}
+              collapsedNodeIds={collapsedNodeIds}
+              readOnly={readOnly}
+              onSelect={onSelect}
+              onRename={onRename}
+              onToggleCollapse={onToggleCollapse}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

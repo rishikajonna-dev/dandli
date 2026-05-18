@@ -29,7 +29,11 @@ export function useKeyboardShortcuts(actions, enabled = true) {
         actions.addChild?.();
       } else if (event.key === 'Enter') {
         event.preventDefault();
-        actions.rename?.();
+        if (event.shiftKey) {
+          actions.addSibling?.();
+        } else {
+          actions.rename?.();
+        }
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         actions.deleteNode?.();

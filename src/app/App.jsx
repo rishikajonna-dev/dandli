@@ -4,6 +4,8 @@ import { Workspace } from './Workspace.jsx';
 import { useHistory } from '../hooks/useHistory.js';
 import { useLocalStorage } from '../hooks/useLocalStorage.js';
 import { createEmptyMap, createMockAiMap, sampleMap } from '../data/sampleMap.js';
+import { handleGenerateMap } from '../features/ai/handleGenerateMap.js';
+import { createMap } from '../features/maps/mapService.js';
 
 function decodeSharedMap() {
   const params = new URLSearchParams(window.location.search);
@@ -53,6 +55,8 @@ export default function App() {
   const [notes, setNotes] = useState('');
   const [context, setContext] = useState('');
   const [upgradeMessage, setUpgradeMessage] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem('clasp-onboarded') !== 'true' && !decodeSharedMap());
   const readOnly = Boolean(decodeSharedMap());
 
@@ -85,40 +89,84 @@ export default function App() {
     setRoute('workspace');
   }
 
-  function createMap() {
-    const title = window.prompt('Map title');
-    if (!title?.trim()) return;
-    const map = createEmptyMap(title.trim());
-    history.setPresent((current) => ({
-      ...current,
-      maps: [map, ...current.maps],
-      activeMapId: map.id,
-      selectedNodeId: map.root.id,
-      focusNodeId: null,
-      editingNodeId: null
-    }));
-    setRoute('workspace');
+  async function handleCreateMap() {
+    const title = 'Untitled Map';
+    const newMap = createEmptyMap(title);
+    try {
+      const savedMap = await createMap(newMap);
+      const dbMap = {
+        ...newMap,
+        id: savedMap.id
+      };
+      history.setPresent((current) => ({
+        ...current,
+        maps: [dbMap, ...current.maps],
+        activeMapId: dbMap.id,
+        selectedNodeId: dbMap.root.id,
+        focusNodeId: null,
+        editingNodeId: dbMap.root.id
+      }));
+      setRoute('workspace');
+    } catch (err) {
+      console.error('Error creating map in Supabase:', err);
+      // Fallback to local map creation for robust UX / offline usage
+      history.setPresent((current) => ({
+        ...current,
+        maps: [newMap, ...current.maps],
+        activeMapId: newMap.id,
+        selectedNodeId: newMap.root.id,
+        focusNodeId: null,
+        editingNodeId: newMap.root.id
+      }));
+      setRoute('workspace');
+    }
   }
 
-  function generateMap() {
-    if ((history.present.aiMapCount ?? 0) >= 2) {
-      setUpgradeMessage('Free plan includes 2 AI-generated maps ever.');
+  async function generateMap() {
+    if (!notes || !notes.trim()) {
+      setError('Please enter some notes.');
       return;
     }
-    const map = createMockAiMap(notes, context);
-    history.setPresent((current) => ({
-      ...current,
-      maps: [map, ...current.maps],
-      activeMapId: map.id,
-      selectedNodeId: map.root.id,
-      focusNodeId: null,
-      editingNodeId: null,
-      aiMapCount: (current.aiMapCount ?? 0) + 1
-    }));
+
+    if ((history.present.aiMapCount ?? 0) >= 2) {
+      setUpgradeMessage('Free plan includes 2 AI-generated maps ever.');
+      setConvertOpen(false);
+      return;
+    }
+
+    setGenerating(true);
+    setError('');
+
+    try {
+      const newMap = await handleGenerateMap(notes);
+
+      history.setPresent((current) => ({
+        ...current,
+        maps: [newMap, ...current.maps],
+        activeMapId: newMap.id,
+        selectedNodeId: newMap.root.id,
+        focusNodeId: null,
+        editingNodeId: newMap.root.id,
+        aiMapCount: (current.aiMapCount ?? 0) + 1
+      }));
+
+      setNotes('');
+      setContext('');
+      setError('');
+      setConvertOpen(false);
+      setRoute('workspace');
+    } catch (err) {
+      setError(err.message || 'An error occurred during generation.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function closeConvertModal() {
+    setConvertOpen(false);
+    setError('');
     setNotes('');
     setContext('');
-    setConvertOpen(false);
-    setRoute('workspace');
   }
 
   return (
@@ -127,8 +175,25 @@ export default function App() {
         <Dashboard
           maps={history.present.maps}
           onOpenMap={openMap}
-          onNewMap={createMap}
-          onConvertNotes={() => setConvertOpen(true)}
+          onNewMap={handleCreateMap}
+          onConvertNotes={() => { setError(''); setConvertOpen(true); }}
+          onSyncMaps={(fetchedMaps) => {
+            history.setPresent((current) => {
+              const merged = [...current.maps];
+              for (const map of fetchedMaps) {
+                const index = merged.findIndex(m => m.id === map.id);
+                if (index > -1) {
+                  merged[index] = map;
+                } else {
+                  merged.push(map);
+                }
+              }
+              return {
+                ...current,
+                maps: merged
+              };
+            });
+          }}
         />
       ) : (
         <Workspace
@@ -149,11 +214,36 @@ export default function App() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <h2>Convert Notes</h2>
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Paste messy notes, research, ideas..." />
-            <input value={context} onChange={(event) => setContext(event.target.value)} placeholder="Optional context or title" />
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Paste messy notes, research, ideas..."
+              disabled={generating}
+            />
+            <input
+              value={context}
+              onChange={(event) => setContext(event.target.value)}
+              placeholder="Optional context or title"
+              disabled={generating}
+            />
+            {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
-              <button type="button" className="secondary-action" onClick={() => setConvertOpen(false)}>Cancel</button>
-              <button type="button" className="primary-action" onClick={generateMap}>Generate Map</button>
+              <button
+                type="button"
+                className="secondary-action"
+                onClick={closeConvertModal}
+                disabled={generating}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-action"
+                onClick={generateMap}
+                disabled={generating}
+              >
+                {generating ? 'Generating...' : 'Generate Map'}
+              </button>
             </div>
           </div>
         </div>
@@ -178,6 +268,7 @@ export default function App() {
             <button type="button" className="primary-action" onClick={() => {
               localStorage.setItem('clasp-onboarded', 'true');
               setShowOnboarding(false);
+              setError('');
               setConvertOpen(true);
             }}>Start with notes</button>
             <button type="button" className="secondary-action" onClick={() => {

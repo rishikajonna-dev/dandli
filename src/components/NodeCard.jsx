@@ -28,7 +28,10 @@ export const NodeCard = React.memo(function NodeCard({
   useEffect(() => {
     if (editing) {
       setDraft(layoutNode.label);
-      requestAnimationFrame(() => inputRef.current?.select());
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
     }
   }, [editing, layoutNode.label]);
 
@@ -95,6 +98,7 @@ export const NodeCard = React.memo(function NodeCard({
       {editing ? (
         <input
           ref={inputRef}
+          autoFocus
           className="node-edit"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

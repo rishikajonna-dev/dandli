@@ -3,7 +3,7 @@ export const layoutConstants = {
   childDistance: 190,
   childDistancePerChild: 6,
   siblingGap: 18,
-  maxVisibleChildren: 6
+  maxVisibleChildren: 8
 };
 
 export const rootSlots = [
@@ -82,13 +82,31 @@ function childEntriesFor(node, options) {
   if (isCollapsed(node, options.collapsedNodeIds)) return [];
 
   const children = realChildren(node);
-  const hiddenCount = Math.max(0, children.length - options.constants.maxVisibleChildren);
+  const isRoot = !node.parentId;
+  const maxLimit = isRoot
+    ? (children.length <= 10 ? children.length : 8)
+    : 8;
+
+  const hiddenCount = Math.max(0, children.length - maxLimit);
   const overflowExpanded = options.expandedOverflow.has(node.id);
 
-  if (hiddenCount === 0 || overflowExpanded) return children;
+  if (hiddenCount === 0) return children;
+
+  if (overflowExpanded) {
+    return [
+      ...children,
+      {
+        id: `overflow-${node.id}`,
+        parentId: node.id,
+        hiddenCount: 0,
+        isOverflowBadge: true,
+        isExpanded: true
+      }
+    ];
+  }
 
   return [
-    ...children.slice(0, options.constants.maxVisibleChildren),
+    ...children.slice(0, maxLimit),
     {
       id: `overflow-${node.id}`,
       parentId: node.id,
@@ -181,7 +199,8 @@ function addOverflowBadge(overflowBadges, entry, parentLayout, x, y, depth, dire
     size,
     branchColor: parentLayout.branchColor,
     direction,
-    axis: primaryAxis(direction)
+    axis: primaryAxis(direction),
+    isExpanded: entry.isExpanded
   });
 }
 
@@ -259,9 +278,19 @@ export function layoutRootChildren(rootLayout, root, nodes, connectors, overflow
   const entries = childEntriesFor(root, normalizedOptions);
   const palette = normalizedOptions.palette ?? [];
 
+  const count = entries.length;
   entries.forEach((entry, index) => {
-    const slot = rootSlots[index % rootSlots.length];
-    const direction = vectorFromAngle(slot.angle);
+    // If up to 8 children, preserve original preset angles.
+    // Otherwise distribute them dynamically.
+    const angle = count <= 8
+      ? (rootSlots[index % rootSlots.length]?.angle ?? (index * 45))
+      : (360 / count) * index;
+
+    const slotName = count <= 8
+      ? (rootSlots[index % rootSlots.length]?.name ?? `slot-${index}`)
+      : `slot-${index}`;
+
+    const direction = vectorFromAngle(angle);
     const color = entry.color ?? palette[index % Math.max(1, palette.length)] ?? '#8B5CF6';
     const childX = rootLayout.x + direction.x * normalizedOptions.constants.rootRadius;
     const childY = rootLayout.y + direction.y * normalizedOptions.constants.rootRadius;
@@ -271,7 +300,7 @@ export function layoutRootChildren(rootLayout, root, nodes, connectors, overflow
       return;
     }
 
-    const childLayout = addNode(nodes, entry, childX, childY, 1, direction, color, slot.name);
+    const childLayout = addNode(nodes, entry, childX, childY, 1, direction, color, slotName);
 
     connectors.push({
       id: `${rootLayout.id}->${childLayout.id}`,

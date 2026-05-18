@@ -28,7 +28,11 @@ export function useZoomPan(initial = { zoom: 0.82, panX: 0, panY: 0 }) {
   }, [zoom]);
 
   const onPointerDown = useCallback((event) => {
-    if (event.button !== 0 || event.target.closest?.('[data-node-card]')) return;
+    if (
+      event.button !== 0 ||
+      event.target.closest?.('[data-node-card]') ||
+      event.target.closest?.('.more-badge')
+    ) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDrag({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, pan });
   }, [pan]);

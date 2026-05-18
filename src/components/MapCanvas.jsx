@@ -98,7 +98,7 @@ export function MapCanvas({
   }, [collapsedNodeIds, effectiveRoot, expandedOverflow]);
 
   const selectedNodeExists = layout.byId.has(selectedNodeId);
-  const activeSelectedId = selectedNodeExists ? selectedNodeId : effectiveRoot.id;
+  const activeSelectedId = selectedNodeExists ? selectedNodeId : null;
   const relations = useMemo(() => relationSets(effectiveRoot, activeSelectedId), [activeSelectedId, effectiveRoot]);
   const focusPath = useMemo(() => focusNodeId ? pathToNode(tree, focusNodeId) : [], [focusNodeId, tree]);
   const semanticZoomClass = zoomPan.zoom < 0.58 ? 'zoom-far' : zoomPan.zoom < 1.02 ? 'zoom-mid' : 'zoom-near';
@@ -112,6 +112,20 @@ export function MapCanvas({
     width: layout.bounds.right - layout.bounds.left + 520,
     height: layout.bounds.bottom - layout.bounds.top + 520
   };
+
+  const pointerStartRef = useRef({ x: 0, y: 0 });
+
+  function handlePointerDown(event) {
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function handleViewportClick(event) {
+    const dx = event.clientX - pointerStartRef.current.x;
+    const dy = event.clientY - pointerStartRef.current.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 5) return;
+    selectNode(null);
+  }
 
   function centerView() {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -193,8 +207,8 @@ export function MapCanvas({
       next.delete(activeSelectedId);
       return next;
     });
-    setSelectedNodeId(activeSelectedId);
-    setEditingNodeId(null);
+    setSelectedNodeId(childId);
+    setEditingNodeId(childId);
   }
 
   function deleteSelected() {
@@ -240,14 +254,14 @@ export function MapCanvas({
       <div className="canvas-toolbar">
         {!readOnly && (
           <>
-            <button type="button" className="tool-button" onClick={addChildToSelected} title="Add child node">
+            <button type="button" className="tool-button" onClick={addChildToSelected} disabled={!activeSelectedId} title="Add child node">
               <Plus size={16} />
             </button>
             <button
               type="button"
               className="tool-button danger"
               onClick={deleteSelected}
-              disabled={activeSelectedId === tree.id}
+              disabled={!activeSelectedId || activeSelectedId === tree.id}
               title="Delete selected node"
             >
               <Trash2 size={16} />
@@ -255,7 +269,7 @@ export function MapCanvas({
             <span className="tool-divider" />
           </>
         )}
-        <button type="button" className="tool-button" onClick={focusSelected} title="Focus selected branch">
+        <button type="button" className="tool-button" onClick={focusSelected} disabled={!activeSelectedId} title="Focus selected branch">
           <Focus size={16} />
         </button>
         <button type="button" className="tool-button" onClick={() => {
@@ -287,7 +301,11 @@ export function MapCanvas({
         ref={viewportRef}
         className={`canvas-viewport ${zoomPan.isPanning ? 'is-panning' : ''}`}
         {...zoomPan.handlers}
-        onClick={() => setEditingNodeId(null)}
+        onPointerDown={(event) => {
+          handlePointerDown(event);
+          zoomPan.handlers.onPointerDown(event);
+        }}
+        onClick={handleViewportClick}
       >
         <div className="canvas-world" style={canvasStyle}>
           <svg
