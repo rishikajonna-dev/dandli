@@ -20,10 +20,14 @@ export function useHistory(initialPresent) {
   }, []);
 
   const replacePresent = useCallback((updater) => {
-    setState((current) => ({
-      ...current,
-      present: typeof updater === 'function' ? updater(current.present) : updater
-    }));
+    setState((current) => {
+      const nextPresent = typeof updater === 'function' ? updater(current.present) : updater;
+      if (Object.is(nextPresent, current.present)) return current;
+      return {
+        ...current,
+        present: nextPresent
+      };
+    });
   }, []);
 
   const undo = useCallback(() => {

@@ -2,47 +2,42 @@
 
 import { supabase } from "../../lib/supabase";
 
-/**
- * Temporary implementation for development before Google Auth is added.
- * Uses a fixed test user ID so maps can be saved to Supabase.
- *
- * IMPORTANT:
- * Make sure this user exists in your `users` table:
- *
- * INSERT INTO users (id, email, full_name)
- * VALUES (
- *   '11111111-1111-1111-1111-111111111111',
- *   'test@example.com',
- *   'Test User'
- * )
- * ON CONFLICT (id) DO NOTHING;
- */
+function requireUserId(userId) {
+    if (!userId) {
+        throw new Error("A signed-in user is required to access maps.");
+    }
+    return userId;
+}
 
-const TEST_USER_ID = "02c13471-13b1-4094-a23f-2f5062711a7a";
+export async function createMap(userId, map) {
+    const ownerId = requireUserId(userId);
+    const finalTitle = typeof map?.title === 'string' && map.title.trim()
+        ? map.title.trim()
+        : 'Untitled Map';
 
-export async function createMap(map) {
     const { data, error } = await supabase
         .from("maps")
         .insert({
-            user_id: TEST_USER_ID,
-            title: map.title || "Untitled Map",
-            data: map,
+            user_id: ownerId,
+            title: finalTitle,
+            data: { ...map, title: finalTitle },
         })
-        .select()
-        .single();
+        .select();
 
     if (error) {
         throw error;
     }
 
-    return data;
+    return data?.[0];
 }
 
-export async function getMap(id) {
+export async function getMap(userId, id) {
+    const ownerId = requireUserId(userId);
     const { data, error } = await supabase
         .from("maps")
         .select("*")
         .eq("id", id)
+        .eq("user_id", ownerId)
         .single();
 
     if (error) {
@@ -52,11 +47,12 @@ export async function getMap(id) {
     return data;
 }
 
-export async function getUserMaps() {
+export async function getUserMaps(userId) {
+    const ownerId = requireUserId(userId);
     const { data, error } = await supabase
         .from("maps")
         .select("*")
-        .eq("user_id", TEST_USER_ID)
+        .eq("user_id", ownerId)
         .order("updated_at", { ascending: false });
 
     if (error) {
@@ -66,31 +62,36 @@ export async function getUserMaps() {
     return data;
 }
 
-export async function updateMap(id, map) {
+export async function updateMap(userId, id, map) {
+    const ownerId = requireUserId(userId);
+    const finalTitle = typeof map?.title === 'string' && map.title.trim()
+        ? map.title.trim()
+        : 'Untitled Map';
+
     const { data, error } = await supabase
         .from("maps")
         .update({
-            title: map.title || "Untitled Map",
-            data: map,
+            title: finalTitle,
+            data: { ...map, title: finalTitle },
         })
         .eq("id", id)
-        .eq("user_id", TEST_USER_ID)
-        .select()
-        .single();
+        .eq("user_id", ownerId)
+        .select();
 
     if (error) {
         throw error;
     }
 
-    return data;
+    return data?.[0];
 }
 
-export async function deleteMap(id) {
+export async function deleteMap(userId, id) {
+    const ownerId = requireUserId(userId);
     const { error } = await supabase
         .from("maps")
         .delete()
         .eq("id", id)
-        .eq("user_id", TEST_USER_ID);
+        .eq("user_id", ownerId);
 
     if (error) {
         throw error;

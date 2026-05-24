@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { MapCanvas } from '../components/MapCanvas.jsx';
 import { OutlinePanel } from '../components/OutlinePanel.jsx';
 import { ContextMenu } from '../components/ContextMenu.jsx';
@@ -10,6 +10,7 @@ import { importJsonFile } from '../utils/importJson.js';
 import { exportSvg } from '../utils/exportSvg.js';
 import { exportPng } from '../utils/exportPng.js';
 import { exportMarkdown } from '../utils/exportMarkdown.js';
+import { supabase } from '../lib/supabase';
 
 function nodeLabel(node) {
   return node?.label ?? node?.title ?? node?.text ?? 'Untitled';
@@ -71,6 +72,7 @@ export function Workspace({
   redo,
   onBack,
   readOnly = false,
+  userId,
   onUpgradeNeeded
 }) {
   const map = appState.maps.find((item) => item.id === appState.activeMapId) ?? appState.maps[0];
@@ -83,6 +85,47 @@ export function Workspace({
   const [menu, setMenu] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const autosaveStatus = useAutosave('clasp-autosave', appState);
+
+  // Supabase Database autosave effect
+  useEffect(() => {
+    if (readOnly || !map?.id || !userId) return;
+    
+    // Determine if it's a UUID (local fallback IDs are not UUIDs)
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(map.id);
+    if (!isUuid) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        console.log("Saving map to Supabase:", map);
+
+        const mapToSave = {
+          ...map,
+          updatedAt: new Date().toISOString(),
+        };
+
+        const mapId = map.id;
+        const { error } = await supabase
+          .from("maps")
+          .update({
+            title: map.title || "Untitled Map",
+            data: mapToSave,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", mapId)
+          .eq("user_id", userId);
+
+        if (error) {
+          console.error("Autosave to Supabase failed:", error.message || error);
+        } else {
+          console.log("Autosave successful");
+        }
+      } catch (err) {
+        console.error("Autosave to Supabase failed:", err);
+      }
+    }, 2000); // 2 seconds delay for debounce
+
+    return () => clearTimeout(timer);
+  }, [map, readOnly, userId]);
 
   function updateCurrentMap(updater) {
     setAppState((current) => ({
@@ -123,7 +166,10 @@ export function Workspace({
 
   function rename(id, label) {
     if (readOnly) return;
-    updateCurrentMap((currentMap) => ({ ...currentMap, root: renameNode(currentMap.root, id, label), title: id === currentMap.root.id ? label : currentMap.title }));
+    updateCurrentMap(currentMap => ({
+      ...currentMap,
+      root: renameNode(currentMap.root, id, label),
+    }));
   }
 
   function addChild(parentId = selectedNodeId, childNode = null) {
@@ -247,7 +293,7 @@ export function Workspace({
         <button type="button" className="back-button" onClick={onBack}>CLASP</button>
         <div>
           <p className="eyebrow">{readOnly ? 'Read-only share' : 'Workspace'}</p>
-          <h1>{map.title}</h1>
+          <h1>{typeof map.title === 'string' && map.title.trim() ? map.title : 'Untitled Map'}</h1>
         </div>
         <Toolbar
           autosaveStatus={readOnly ? 'Read only' : autosaveStatus}

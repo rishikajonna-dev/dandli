@@ -1,12 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { LandingPage } from './LandingPage.jsx';
+import { AuthPage } from './AuthPage.jsx';
 import { Dashboard } from './Dashboard.jsx';
 import { Workspace } from './Workspace.jsx';
+import { useAuth } from '../auth/AuthProvider.jsx';
 import { useHistory } from '../hooks/useHistory.js';
 import { useLocalStorage } from '../hooks/useLocalStorage.js';
-import { createEmptyMap, createMockAiMap, sampleMap } from '../data/sampleMap.js';
+import { createMap, deleteMap, updateMap } from '../features/maps/mapService.js';
+import { sampleMap } from '../data/sampleMap.js';
 import { handleGenerateMap } from '../features/ai/handleGenerateMap.js';
-import { createMap } from '../features/maps/mapService.js';
 
+// The navigateTo function will be defined inside the App component after setRoute is available.
+
+// Decode possible shared map from URL parameters
 function decodeSharedMap() {
   const params = new URLSearchParams(window.location.search);
   const encoded = params.get('share');
@@ -18,54 +24,237 @@ function decodeSharedMap() {
   }
 }
 
-function createInitialState(stored) {
-  const shared = decodeSharedMap();
-  if (shared) {
-    return {
-      maps: [shared],
-      activeMapId: shared.id,
-      selectedNodeId: shared.root.id,
-      focusNodeId: null,
-      editingNodeId: null,
-      collapsedNodeIds: [],
-      expandedOverflow: [],
-      totalNodesLifetime: 1,
-      aiMapCount: 0
-    };
-  }
-
-  return stored ?? {
-    maps: [sampleMap],
-    activeMapId: sampleMap.id,
-    selectedNodeId: sampleMap.root.id,
-    focusNodeId: null,
-    editingNodeId: null,
-    collapsedNodeIds: [],
-    expandedOverflow: [],
-    totalNodesLifetime: 1,
-    aiMapCount: 0
-  };
-}
-
 export default function App() {
-  const [storedState, setStoredState] = useLocalStorage('clasp-app-state', null);
-  const history = useHistory(createInitialState(storedState));
-  const [route, setRoute] = useState(decodeSharedMap() ? 'workspace' : 'dashboard');
+  const { user, loading: authLoading, signOut } = useAuth();
+  // Determine initial route based on URL and shared map
+  const initialPath = window.location.pathname;
+  const sharedMap = decodeSharedMap();
+  const initialRoute = sharedMap
+    ? '/workspace'
+    : initialPath === '/'
+    ? '/' // landing page
+    : initialPath === '/app'
+    ? '/app' // dashboard
+    : initialPath === '/auth'
+    ? '/auth' // auth page
+    : '/app'; // fallback to dashboard
+
+  const [route, setRoute] = useState(initialRoute);
+  const navigateTo = (path) => {
+    // Update browser history and route state
+    window.history.pushState(null, '', path);
+    setRoute(path);
+  };
   const [convertOpen, setConvertOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newMapTitle, setNewMapTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [context, setContext] = useState('');
   const [upgradeMessage, setUpgradeMessage] = useState('');
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
-  const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem('clasp-onboarded') !== 'true' && !decodeSharedMap());
-  const readOnly = Boolean(decodeSharedMap());
+  const [generating, setGenerating] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem('clasp-onboarded') !== 'true' && !sharedMap);
 
+  const [storedState, setStoredState] = useLocalStorage('clasp-app-state', null);
+  const history = useHistory(
+    (() => {
+      if (sharedMap) {
+        return {
+          maps: [sharedMap],
+          activeMapId: sharedMap.id,
+          selectedNodeId: sharedMap.root.id,
+          focusNodeId: null,
+          editingNodeId: null,
+          collapsedNodeIds: [],
+          expandedOverflow: [],
+          totalNodesLifetime: 1,
+          aiMapCount: 0,
+        };
+      }
+      return storedState ?? {
+        maps: [sampleMap],
+        activeMapId: sampleMap.id,
+        selectedNodeId: sampleMap.root.id,
+        focusNodeId: null,
+        editingNodeId: null,
+        collapsedNodeIds: [],
+        expandedOverflow: [],
+        totalNodesLifetime: 1,
+        aiMapCount: 0,
+      };
+    })()
+  );
+
+  const readOnly = Boolean(sharedMap);
+
+  // Persist state when not read‑only
   useEffect(() => {
     if (!readOnly) setStoredState(history.present);
   }, [history.present, readOnly, setStoredState]);
 
+  // Update body class for styling
   useEffect(() => {
-    if (!showOnboarding) return undefined;
+    document.body.className = route === '/app' ? 'route-dashboard' : route === '/workspace' ? 'route-workspace' : '';
+  }, [route]);
+
+  // Browser back/forward handling
+  useEffect(() => {
+    const onPopState = () => {
+      const path = window.location.pathname;
+      setRoute(path);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Sign‑out handler
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (e) {
+      console.error('Sign out error', e);
+    }
+    navigateTo('/auth');
+  };
+
+  // Navigation callback passed to child components
+  const handleNavigate = (path) => navigateTo(path);
+
+  // Open a map in workspace
+  const openMap = (id) => {
+    history.replacePresent((current) => {
+      const map = current.maps.find((m) => m.id === id);
+      return {
+        ...current,
+        activeMapId: id,
+        selectedNodeId: map?.root?.id ?? 'root',
+        focusNodeId: null,
+        editingNodeId: null,
+      };
+    });
+    navigateTo('/workspace');
+  };
+
+  // Sync maps from Supabase
+  const handleSyncMaps = useCallback(
+    (syncedMaps) => {
+      history.replacePresent((current) => {
+        const parsedMaps = (syncedMaps || []).map((m) => {
+          const data = typeof m.data === 'string' ? JSON.parse(m.data) : m.data;
+          const title = data?.title?.trim() || m.title?.trim() || 'Untitled Map';
+          return { ...data, id: m.id, title, updatedAt: m.updated_at || data?.updatedAt || new Date().toISOString() };
+        });
+        return { ...current, maps: parsedMaps };
+      });
+    },
+    [history]
+  );
+
+  // Create new map
+  const handleCreateMap = async (customTitle) => {
+    const id = crypto.randomUUID();
+    const title = customTitle?.trim() || 'Untitled Map';
+    const newMap = {
+      id,
+      title,
+      root: { id: 'root', label: title, children: [], metadata: {}, collapsed: false, color: null },
+      updatedAt: new Date().toISOString(),
+      aiGenerated: false,
+    };
+    try {
+      const saved = await createMap(user?.id, newMap);
+      const dbMap = { ...newMap, id: saved.id };
+      history.setPresent((c) => ({ ...c, maps: [dbMap, ...c.maps], activeMapId: dbMap.id, selectedNodeId: dbMap.root.id, editingNodeId: dbMap.root.id }));
+    } catch (e) {
+      console.error('Create map error', e);
+      history.setPresent((c) => ({ ...c, maps: [newMap, ...c.maps], activeMapId: newMap.id, selectedNodeId: newMap.root.id, editingNodeId: newMap.root.id }));
+    }
+    navigateTo('/workspace');
+  };
+
+  // Delete map
+  const handleDeleteMap = async (id) => {
+    try {
+      await deleteMap(user?.id, id);
+    } catch (e) {
+      console.error('Delete map error', e);
+    }
+    history.setPresent((c) => ({
+      ...c,
+      maps: c.maps.filter((m) => m.id !== id),
+      activeMapId: c.activeMapId === id ? c.maps.find((m) => m.id !== id)?.id ?? null : c.activeMapId,
+    }));
+  };
+
+  // Rename map
+  const handleRenameMap = async (id, newTitle) => {
+    const title = newTitle?.trim() || 'Untitled Map';
+    const existing = history.present.maps.find((m) => m.id === id);
+    if (!existing) return;
+    const updated = { ...existing, title, root: { ...existing.root, label: title }, updatedAt: new Date().toISOString() };
+    try {
+      await updateMap(user?.id, id, updated);
+    } catch (e) {
+      console.error('Rename map error', e);
+    }
+    history.setPresent((c) => ({ ...c, maps: c.maps.map((m) => (m.id === id ? updated : m)) }));
+  };
+
+  // Generate AI map
+  const generateMap = async () => {
+    if (!notes?.trim()) {
+      setError('Please enter some notes.');
+      return;
+    }
+    if ((history.present.aiMapCount ?? 0) >= 2) {
+      setUpgradeMessage('Free plan includes 2 AI‑generated maps ever.');
+      setConvertOpen(false);
+      return;
+    }
+    setGenerating(true);
+    setError('');
+    try {
+      const generated = await handleGenerateMap(notes);
+      const aiTitle = generated.root?.text || generated.root?.label || 'AI Mind Map';
+      generated.title = aiTitle;
+      if (generated.root) generated.root.label = aiTitle;
+      let finalMap = generated;
+      try {
+        const saved = await createMap(user?.id, generated);
+        finalMap = { ...generated, id: saved.id };
+        if (finalMap.root) finalMap.root.label = aiTitle;
+      } catch (e) {
+        console.error('Save AI map error', e);
+      }
+      history.setPresent((c) => ({
+        ...c,
+        maps: [finalMap, ...c.maps],
+        activeMapId: finalMap.id,
+        selectedNodeId: finalMap.root.id,
+        editingNodeId: finalMap.root.id,
+        aiMapCount: (c.aiMapCount ?? 0) + 1,
+      }));
+      setNotes('');
+      setContext('');
+      setConvertOpen(false);
+      navigateTo('/workspace');
+    } catch (e) {
+      setError(e.message || 'Error generating map');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const closeConvertModal = () => {
+    setConvertOpen(false);
+    setError('');
+    setNotes('');
+    setContext('');
+  };
+
+  // Onboarding timer
+  useEffect(() => {
+    if (!showOnboarding) return;
     const timer = setTimeout(() => {
       localStorage.setItem('clasp-onboarded', 'true');
       setShowOnboarding(false);
@@ -73,175 +262,136 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [showOnboarding]);
 
-  const activeMap = useMemo(() => {
-    return history.present.maps.find((map) => map.id === history.present.activeMapId) ?? history.present.maps[0];
-  }, [history.present]);
+  // Authentication redirect effect
+  useEffect(() => {
+    if (authLoading) return;
 
-  function openMap(id) {
-    const map = history.present.maps.find((item) => item.id === id);
-    history.replacePresent((current) => ({
-      ...current,
-      activeMapId: id,
-      selectedNodeId: map?.root.id ?? 'root',
-      focusNodeId: null,
-      editingNodeId: null
-    }));
-    setRoute('workspace');
-  }
+    const requiresAuth = route !== '/auth';
 
-  async function handleCreateMap() {
-    const title = 'Untitled Map';
-    const newMap = createEmptyMap(title);
-    try {
-      const savedMap = await createMap(newMap);
-      const dbMap = {
-        ...newMap,
-        id: savedMap.id
-      };
-      history.setPresent((current) => ({
-        ...current,
-        maps: [dbMap, ...current.maps],
-        activeMapId: dbMap.id,
-        selectedNodeId: dbMap.root.id,
-        focusNodeId: null,
-        editingNodeId: dbMap.root.id
-      }));
-      setRoute('workspace');
-    } catch (err) {
-      console.error('Error creating map in Supabase:', err);
-      // Fallback to local map creation for robust UX / offline usage
-      history.setPresent((current) => ({
-        ...current,
-        maps: [newMap, ...current.maps],
-        activeMapId: newMap.id,
-        selectedNodeId: newMap.root.id,
-        focusNodeId: null,
-        editingNodeId: newMap.root.id
-      }));
-      setRoute('workspace');
-    }
-  }
-
-  async function generateMap() {
-    if (!notes || !notes.trim()) {
-      setError('Please enter some notes.');
+    if (requiresAuth && !user) {
+      navigateTo('/auth');
       return;
     }
 
-    if ((history.present.aiMapCount ?? 0) >= 2) {
-      setUpgradeMessage('Free plan includes 2 AI-generated maps ever.');
-      setConvertOpen(false);
-      return;
+    if (route === '/auth' && user) {
+      navigateTo('/app');
     }
+  }, [authLoading, route, user]);
 
-    setGenerating(true);
-    setError('');
-
-    try {
-      const newMap = await handleGenerateMap(notes);
-
-      history.setPresent((current) => ({
-        ...current,
-        maps: [newMap, ...current.maps],
-        activeMapId: newMap.id,
-        selectedNodeId: newMap.root.id,
-        focusNodeId: null,
-        editingNodeId: newMap.root.id,
-        aiMapCount: (current.aiMapCount ?? 0) + 1
-      }));
-
-      setNotes('');
-      setContext('');
-      setError('');
-      setConvertOpen(false);
-      setRoute('workspace');
-    } catch (err) {
-      setError(err.message || 'An error occurred during generation.');
-    } finally {
-      setGenerating(false);
-    }
+  if (authLoading) {
+    return <main className="app-root" />;
   }
 
-  function closeConvertModal() {
-    setConvertOpen(false);
-    setError('');
-    setNotes('');
-    setContext('');
+  if (route !== '/auth' && !user) {
+    return <main className="app-root" />;
+  }
+
+// Render based on route
+let mainContent;
+if (route === '/' ) {
+  // Landing page does not need authentication prop
+  mainContent = (
+    <LandingPage onNavigate={handleNavigate} />
+  );
+} else if (route === '/auth') {
+  mainContent = (
+    <AuthPage />
+  );
+} else if (route === '/app' && !readOnly) {
+    mainContent = (
+      <Dashboard
+        maps={history.present.maps}
+        userId={user?.id}
+        onOpenMap={openMap}
+        onNewMap={() => {
+          setNewMapTitle('');
+          setCreateOpen(true);
+        }}
+        onSyncMaps={handleSyncMaps}
+        onConvertNotes={() => {
+          setError('');
+          setConvertOpen(true);
+        }}
+        onDeleteMap={handleDeleteMap}
+        onRenameMap={handleRenameMap}
+        onSignOut={handleSignOut}
+      />
+    );
+  } else {
+    // For workspace and any other routes
+    mainContent = (
+      <Workspace
+        appState={history.present}
+        setAppState={history.setPresent}
+        replaceAppState={history.replacePresent}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        undo={history.undo}
+        redo={history.redo}
+        readOnly={readOnly}
+        userId={user?.id}
+        onBack={() => navigateTo('/app')}
+        onUpgradeNeeded={setUpgradeMessage}
+      />
+    );
   }
 
   return (
     <main className="app-root">
-      {route === 'dashboard' && !readOnly ? (
-        <Dashboard
-          maps={history.present.maps}
-          onOpenMap={openMap}
-          onNewMap={handleCreateMap}
-          onConvertNotes={() => { setError(''); setConvertOpen(true); }}
-          onSyncMaps={(fetchedMaps) => {
-            history.setPresent((current) => {
-              const merged = [...current.maps];
-              for (const map of fetchedMaps) {
-                const index = merged.findIndex(m => m.id === map.id);
-                if (index > -1) {
-                  merged[index] = map;
-                } else {
-                  merged.push(map);
+      {mainContent}
+
+      {/* Create Map Modal */}
+      {createOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>Create New Mind Map</h2>
+            <input
+              value={newMapTitle}
+              onChange={(e) => setNewMapTitle(e.target.value)}
+              placeholder="Enter a title for your mind map..."
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setCreateOpen(false);
+                  handleCreateMap(newMapTitle);
                 }
-              }
-              return {
-                ...current,
-                maps: merged
-              };
-            });
-          }}
-        />
-      ) : (
-        <Workspace
-          appState={history.present}
-          setAppState={history.setPresent}
-          replaceAppState={history.replacePresent}
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-          undo={history.undo}
-          redo={history.redo}
-          readOnly={readOnly}
-          onBack={() => setRoute('dashboard')}
-          onUpgradeNeeded={setUpgradeMessage}
-        />
+              }}
+            />
+            <div className="modal-actions">
+              <button type="button" className="secondary-action" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className="primary-action" onClick={() => { setCreateOpen(false); handleCreateMap(newMapTitle); }}>
+                Create Map
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
+      {/* Convert Notes Modal */}
       {convertOpen && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <h2>Convert Notes</h2>
             <textarea
               value={notes}
-              onChange={(event) => setNotes(event.target.value)}
+              onChange={(e) => setNotes(e.target.value)}
               placeholder="Paste messy notes, research, ideas..."
               disabled={generating}
             />
             <input
               value={context}
-              onChange={(event) => setContext(event.target.value)}
+              onChange={(e) => setContext(e.target.value)}
               placeholder="Optional context or title"
               disabled={generating}
             />
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
-              <button
-                type="button"
-                className="secondary-action"
-                onClick={closeConvertModal}
-                disabled={generating}
-              >
+              <button type="button" className="secondary-action" onClick={closeConvertModal} disabled={generating}>
                 Cancel
               </button>
-              <button
-                type="button"
-                className="primary-action"
-                onClick={generateMap}
-                disabled={generating}
-              >
+              <button type="button" className="primary-action" onClick={generateMap} disabled={generating}>
                 {generating ? 'Generating...' : 'Generate Map'}
               </button>
             </div>
@@ -249,32 +399,32 @@ export default function App() {
         </div>
       )}
 
+      {/* Upgrade Message Modal */}
       {upgradeMessage && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal small">
             <h2>Upgrade needed</h2>
             <p>{upgradeMessage}</p>
-            <button type="button" className="primary-action" onClick={() => setUpgradeMessage('')}>Got it</button>
+            <button type="button" className="primary-action" onClick={() => setUpgradeMessage('')}>
+              Got it
+            </button>
           </div>
         </div>
       )}
 
+      {/* Onboarding */}
       {showOnboarding && (
         <div className="onboarding-layer">
           <div className="onboarding-card">
             <p className="eyebrow">Welcome to CLASP</p>
             <h2>What’s on your mind right now?</h2>
             <p>Drop the messy thought. Clasp will help turn it into structure.</p>
-            <button type="button" className="primary-action" onClick={() => {
-              localStorage.setItem('clasp-onboarded', 'true');
-              setShowOnboarding(false);
-              setError('');
-              setConvertOpen(true);
-            }}>Start with notes</button>
-            <button type="button" className="secondary-action" onClick={() => {
-              localStorage.setItem('clasp-onboarded', 'true');
-              setShowOnboarding(false);
-            }}>Skip intro</button>
+            <button type="button" className="primary-action" onClick={() => { localStorage.setItem('clasp-onboarded', 'true'); setShowOnboarding(false); setError(''); setConvertOpen(true); }}>
+              Start with notes
+            </button>
+            <button type="button" className="secondary-action" onClick={() => { localStorage.setItem('clasp-onboarded', 'true'); setShowOnboarding(false); }}>
+              Skip intro
+            </button>
           </div>
         </div>
       )}
