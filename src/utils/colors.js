@@ -1,12 +1,12 @@
 export const branchPalette = [
-  '#8B5CF6',
-  '#06B6D4',
-  '#10B981',
-  '#F97316',
-  '#EC4899',
-  '#F59E0B',
-  '#84CC16',
-  '#6366F1'
+  '#7F9B72',
+  '#9A7A4F',
+  '#61766A',
+  '#B08B6A',
+  '#899C7C',
+  '#787262',
+  '#5E7658',
+  '#8A6A52'
 ];
 
 export function hexToRgb(hex) {

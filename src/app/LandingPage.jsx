@@ -1,6 +1,6 @@
 import React from 'react';
-import logoAsset from '../assets/logo.png';
-import heroAsset from '../assets/hero-dandelion.png';
+import logoAsset from '../assets/logo.webp';
+import heroAsset from '../assets/hero-dandelion.webp';
 import { useAuth } from '../auth/AuthProvider.jsx';
 
 export function LandingPage({ onNavigate }) {
@@ -53,7 +53,7 @@ export function LandingPage({ onNavigate }) {
         </div>
         <div className="hero-visual">
           <div className="image-frame">
-            <img src={heroAsset} alt="Dandli Mind Map Preview" className="hero-image" />
+            <img src={heroAsset} alt="Dandli Mind Map Preview" className="hero-image" width="1200" height="655" />
             <div className="frame-overlay-glow" />
           </div>
         </div>

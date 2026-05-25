@@ -291,7 +291,7 @@ export function layoutRootChildren(rootLayout, root, nodes, connectors, overflow
       : `slot-${index}`;
 
     const direction = vectorFromAngle(angle);
-    const color = entry.color ?? palette[index % Math.max(1, palette.length)] ?? '#8B5CF6';
+    const color = entry.color ?? palette[index % Math.max(1, palette.length)] ?? '#7F9B72';
     const childX = rootLayout.x + direction.x * normalizedOptions.constants.rootRadius;
     const childY = rootLayout.y + direction.y * normalizedOptions.constants.rootRadius;
 

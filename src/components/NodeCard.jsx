@@ -78,8 +78,15 @@ export const NodeCard = React.memo(function NodeCard({
         event.stopPropagation();
         onContextMenu?.(layoutNode.id, event.clientX, event.clientY);
       }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(layoutNode.id);
+        }
+      }}
       role="button"
       tabIndex={0}
+      aria-label={`Select ${layoutNode.label}`}
     >
       {canCollapse && (
         <button

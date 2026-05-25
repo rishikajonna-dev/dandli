@@ -9,6 +9,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage.js';
 import { createMap, deleteMap, updateMap } from '../features/maps/mapService.js';
 import { sampleMap } from '../data/sampleMap.js';
 import { handleGenerateMap } from '../features/ai/handleGenerateMap.js';
+import { FREE_PLAN_LIMITS, isAiGenerationAllowed } from '../features/billing/entitlements.js';
 
 // The navigateTo function will be defined inside the App component after setRoute is available.
 
@@ -40,11 +41,11 @@ export default function App() {
     : '/app'; // fallback to dashboard
 
   const [route, setRoute] = useState(initialRoute);
-  const navigateTo = (path) => {
+  const navigateTo = useCallback((path) => {
     // Update browser history and route state
     window.history.pushState(null, '', path);
     setRoute(path);
-  };
+  }, []);
   const [convertOpen, setConvertOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newMapTitle, setNewMapTitle] = useState('');
@@ -94,7 +95,15 @@ export default function App() {
 
   // Update body class for styling
   useEffect(() => {
-    document.body.className = route === '/app' ? 'route-dashboard' : route === '/workspace' ? 'route-workspace' : '';
+    const routeClass =
+      route === '/app'
+        ? 'route-dashboard'
+        : route === '/workspace'
+        ? 'route-workspace'
+        : route === '/auth'
+        ? 'route-auth'
+        : 'route-landing';
+    document.body.className = routeClass;
   }, [route]);
 
   // Browser back/forward handling
@@ -147,7 +156,7 @@ export default function App() {
         return { ...current, maps: parsedMaps };
       });
     },
-    [history]
+    [history.replacePresent]
   );
 
   // Create new map
@@ -206,15 +215,16 @@ export default function App() {
       setError('Please enter some notes.');
       return;
     }
-    if ((history.present.aiMapCount ?? 0) >= 2) {
-      setUpgradeMessage('Free plan includes 2 AI‑generated maps ever.');
+    if (!isAiGenerationAllowed(history.present.aiMapCount ?? 0)) {
+      setUpgradeMessage(`Free plan includes ${FREE_PLAN_LIMITS.aiMapsLifetime} AI-generated maps ever.`);
       setConvertOpen(false);
       return;
     }
     setGenerating(true);
     setError('');
     try {
-      const generated = await handleGenerateMap(notes);
+      const sourceNotes = context?.trim() ? `${context.trim()}\n\n${notes}` : notes;
+      const generated = await handleGenerateMap(sourceNotes);
       const aiTitle = generated.root?.text || generated.root?.label || 'AI Mind Map';
       generated.title = aiTitle;
       if (generated.root) generated.root.label = aiTitle;
@@ -266,7 +276,7 @@ export default function App() {
   useEffect(() => {
     if (authLoading) return;
 
-    const requiresAuth = route !== '/auth';
+    const requiresAuth = !['/', '/auth'].includes(route) && !readOnly;
 
     if (requiresAuth && !user) {
       navigateTo('/auth');
@@ -276,13 +286,13 @@ export default function App() {
     if (route === '/auth' && user) {
       navigateTo('/app');
     }
-  }, [authLoading, route, user]);
+  }, [authLoading, navigateTo, readOnly, route, user]);
 
   if (authLoading) {
     return <main className="app-root" />;
   }
 
-  if (route !== '/auth' && !user) {
+  if (!['/', '/auth'].includes(route) && !readOnly && !user) {
     return <main className="app-root" />;
   }
 

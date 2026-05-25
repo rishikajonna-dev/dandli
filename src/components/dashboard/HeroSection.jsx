@@ -1,20 +1,20 @@
 import React from 'react';
 import { QuickActions } from './QuickActions.jsx';
-import dandelionAsset from '../../assets/hero-dandelion.png';
+import dandelionAsset from '../../assets/hero-dandelion.webp';
 
 export function HeroSection({ mapCount, onNewMap, onConvertNotes, isSyncing }) {
   return (
-    <section className="hero-section">
+    <section className="dashboard-hero-section">
       <div 
-        className="hero-background" 
+        className="dashboard-hero-background" 
         style={{ backgroundImage: `url(${dandelionAsset})` }}
         aria-hidden="true"
       />
       
-      <div className="hero-content">
+      <div className="dashboard-hero-content">
         <p className="hero-eyebrow">YOUR WORKSPACE</p>
         <h1 className="hero-title">What are you mapping today?</h1>
-        <div className="hero-badge">
+        <div className="dashboard-hero-badge">
           {mapCount} {mapCount === 1 ? 'map' : 'maps'}
         </div>
 

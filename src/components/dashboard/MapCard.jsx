@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MoreVertical, Edit2, Copy, Trash2 } from 'lucide-react';
 
 const CARD_THEMES = [
-  { bg: '#F8F2FF', stroke: '#C084FC', node: '#A855F7', center: '#7E22CE', border: '#F1E6FF' }, // Lavender
-  { bg: '#F0F7FF', stroke: '#38BDF8', node: '#0EA5E9', center: '#0369A1', border: '#E0EEFF' }, // Sky Blue
-  { bg: '#F2FAF5', stroke: '#81C784', node: '#4CAF50', center: '#1B5E20', border: '#E3F5EB' }, // Mint
-  { bg: '#FFF2F9', stroke: '#F472B6', node: '#EC4899', center: '#BE185D', border: '#FFE5F4' }, // Pink
-  { bg: '#FFFDEC', stroke: '#FACC15', node: '#EAB308', center: '#A16207', border: '#FFF9D4' }, // Yellow
-  { bg: '#F8FAFC', stroke: '#94A3B8', node: '#64748B', center: '#334155', border: '#EBEFF5' }  // Grey
+  { bg: '#F5F1E8', stroke: '#9A7A4F', node: '#7D6848', center: '#2F2A23' },
+  { bg: '#EEF4EA', stroke: '#7F9B72', node: '#5E7658', center: '#1F3728' },
+  { bg: '#F6F0EA', stroke: '#B08B6A', node: '#8A6A52', center: '#3A2E26' },
+  { bg: '#EEF2EF', stroke: '#7C9085', node: '#61766A', center: '#25352E' },
+  { bg: '#F4F1EC', stroke: '#A19A88', node: '#787262', center: '#302E29' },
+  { bg: '#F0F3ED', stroke: '#899C7C', node: '#66785A', center: '#263326' }
 ];
 
 export function MapCard({ map, index, onOpen, onRename, onDuplicate, onDelete }) {
@@ -36,6 +36,7 @@ export function MapCard({ map, index, onOpen, onRename, onDuplicate, onDelete })
       onClick={() => onOpen(map.id)}
       role="button"
       tabIndex={0}
+      aria-label={`Open ${map.title || 'Untitled Map'}`}
       style={{ 
         backgroundColor: '#FFFFFF', 
         borderColor: '#EBEBE8',

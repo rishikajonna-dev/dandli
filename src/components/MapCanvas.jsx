@@ -81,6 +81,7 @@ export function MapCanvas({
   onContextMenu
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const viewportRef = useRef(null);
   const zoomPan = useZoomPan({ zoom: 0.82, panX: 0, panY: 0 });
 
@@ -112,6 +113,34 @@ export function MapCanvas({
     width: layout.bounds.right - layout.bounds.left + 520,
     height: layout.bounds.bottom - layout.bounds.top + 520
   };
+  const visibleBounds = useMemo(() => {
+    const margin = 280;
+    const width = viewportSize.width || 0;
+    const height = viewportSize.height || 0;
+
+    return {
+      left: (-zoomPan.panX) / zoomPan.zoom - margin,
+      right: (width - zoomPan.panX) / zoomPan.zoom + margin,
+      top: (-zoomPan.panY) / zoomPan.zoom - margin,
+      bottom: (height - zoomPan.panY) / zoomPan.zoom + margin
+    };
+  }, [viewportSize.height, viewportSize.width, zoomPan.panX, zoomPan.panY, zoomPan.zoom]);
+  const visibleNodes = useMemo(() => layout.nodes.filter((node) => (
+    node.right >= visibleBounds.left &&
+    node.left <= visibleBounds.right &&
+    node.bottom >= visibleBounds.top &&
+    node.top <= visibleBounds.bottom
+  )), [layout.nodes, visibleBounds]);
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
+  const visibleConnectors = useMemo(() => layout.connectors.filter((connector) => (
+    visibleNodeIds.has(connector.sourceId) || visibleNodeIds.has(connector.targetId)
+  )), [layout.connectors, visibleNodeIds]);
+  const visibleOverflowBadges = useMemo(() => layout.overflowBadges.filter((badge) => (
+    badge.left + badge.size.width >= visibleBounds.left &&
+    badge.left <= visibleBounds.right &&
+    badge.top + badge.size.height >= visibleBounds.top &&
+    badge.top <= visibleBounds.bottom
+  )), [layout.overflowBadges, visibleBounds]);
 
   const pointerStartRef = useRef({ x: 0, y: 0 });
 
@@ -135,6 +164,21 @@ export function MapCanvas({
 
   useLayoutEffect(() => {
     centerView();
+  }, []);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return undefined;
+
+    function syncSize() {
+      const rect = viewport.getBoundingClientRect();
+      setViewportSize({ width: rect.width, height: rect.height });
+    }
+
+    syncSize();
+    const observer = new ResizeObserver(syncSize);
+    observer.observe(viewport);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -254,7 +298,7 @@ export function MapCanvas({
       <div className="canvas-toolbar">
         {!readOnly && (
           <>
-            <button type="button" className="tool-button" onClick={addChildToSelected} disabled={!activeSelectedId} title="Add child node">
+            <button type="button" className="tool-button" onClick={addChildToSelected} disabled={!activeSelectedId} title="Add child node" aria-label="Add child node">
               <Plus size={16} />
             </button>
             <button
@@ -263,30 +307,31 @@ export function MapCanvas({
               onClick={deleteSelected}
               disabled={!activeSelectedId || activeSelectedId === tree.id}
               title="Delete selected node"
+              aria-label="Delete selected node"
             >
               <Trash2 size={16} />
             </button>
             <span className="tool-divider" />
           </>
         )}
-        <button type="button" className="tool-button" onClick={focusSelected} disabled={!activeSelectedId} title="Focus selected branch">
+        <button type="button" className="tool-button" onClick={focusSelected} disabled={!activeSelectedId} title="Focus selected branch" aria-label="Focus selected branch">
           <Focus size={16} />
         </button>
         <button type="button" className="tool-button" onClick={() => {
           setFocusNodeId(null);
           setSelectedNodeId(tree.id);
           requestAnimationFrame(centerView);
-        }} title="Return to root">
+        }} title="Return to root" aria-label="Return to root">
           <Crosshair size={16} />
         </button>
         <span className="tool-divider" />
-        <button type="button" className="tool-button" onClick={zoomPan.zoomOut} title="Zoom out">
+        <button type="button" className="tool-button" onClick={zoomPan.zoomOut} title="Zoom out" aria-label="Zoom out">
           <Minus size={16} />
         </button>
-        <button type="button" className="tool-button" onClick={zoomPan.zoomIn} title="Zoom in">
+        <button type="button" className="tool-button" onClick={zoomPan.zoomIn} title="Zoom in" aria-label="Zoom in">
           <Plus size={16} />
         </button>
-        <button type="button" className="tool-button" onClick={zoomPan.reset} title="Reset view">
+        <button type="button" className="tool-button" onClick={zoomPan.reset} title="Reset view" aria-label="Reset view">
           <RotateCcw size={16} />
         </button>
       </div>
@@ -313,7 +358,7 @@ export function MapCanvas({
             style={svgFrame}
             viewBox={`${svgFrame.left} ${svgFrame.top} ${svgFrame.width} ${svgFrame.height}`}
           >
-            {layout.connectors.map((connector) => {
+            {visibleConnectors.map((connector) => {
               const strong = relations.highlighted.has(connector.sourceId) && relations.highlighted.has(connector.targetId);
               const dimmed = activeSelectedId && !strong;
               return (
@@ -327,7 +372,7 @@ export function MapCanvas({
           </svg>
 
           <div className="node-layer">
-            {layout.overflowBadges.map((badge) => {
+            {visibleOverflowBadges.map((badge) => {
               const parentHighlighted = relations.highlighted.has(badge.parentId);
               const dimmed = activeSelectedId && !parentHighlighted;
 
@@ -342,7 +387,7 @@ export function MapCanvas({
               );
             })}
 
-            {layout.nodes.map((layoutNode) => {
+            {visibleNodes.map((layoutNode) => {
               const selected = layoutNode.id === activeSelectedId;
               const highlighted = relations.highlighted.has(layoutNode.id);
               const dimmed = activeSelectedId && !highlighted;

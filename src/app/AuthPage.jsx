@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../auth/AuthProvider.jsx';
-import logoAsset from '../assets/logo.png';
+import logoAsset from '../assets/logo.webp';
 
 export function AuthPage() {
   const { signInWithGoogle } = useAuth();

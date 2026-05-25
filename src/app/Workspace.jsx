@@ -10,7 +10,8 @@ import { importJsonFile } from '../utils/importJson.js';
 import { exportSvg } from '../utils/exportSvg.js';
 import { exportPng } from '../utils/exportPng.js';
 import { exportMarkdown } from '../utils/exportMarkdown.js';
-import { supabase } from '../lib/supabase';
+import { updateMap } from '../features/maps/mapService.js';
+import { FREE_PLAN_LIMITS, isNodeCreationAllowed } from '../features/billing/entitlements.js';
 
 function nodeLabel(node) {
   return node?.label ?? node?.title ?? node?.text ?? 'Untitled';
@@ -96,29 +97,12 @@ export function Workspace({
 
     const timer = setTimeout(async () => {
       try {
-        console.log("Saving map to Supabase:", map);
-
         const mapToSave = {
           ...map,
           updatedAt: new Date().toISOString(),
         };
 
-        const mapId = map.id;
-        const { error } = await supabase
-          .from("maps")
-          .update({
-            title: map.title || "Untitled Map",
-            data: mapToSave,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", mapId)
-          .eq("user_id", userId);
-
-        if (error) {
-          console.error("Autosave to Supabase failed:", error.message || error);
-        } else {
-          console.log("Autosave successful");
-        }
+        await updateMap(userId, map.id, mapToSave);
       } catch (err) {
         console.error("Autosave to Supabase failed:", err);
       }
@@ -175,8 +159,8 @@ export function Workspace({
   function addChild(parentId = selectedNodeId, childNode = null) {
     if (readOnly) return;
     if (!parentId) return;
-    if ((appState.totalNodesLifetime ?? 0) >= 150) {
-      onUpgradeNeeded?.('Free plan includes 150 total nodes lifetime.');
+    if (!isNodeCreationAllowed(appState.totalNodesLifetime ?? 0)) {
+      onUpgradeNeeded?.(`Free plan includes ${FREE_PLAN_LIMITS.totalNodesLifetime} total nodes lifetime.`);
       return;
     }
     const child = childNode ?? { id: `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, label: 'New idea', children: [], collapsed: false, color: null, metadata: {} };

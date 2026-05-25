@@ -83,9 +83,7 @@ export function DashboardPage({
 
     try {
       setLoading(true);
-      console.log("Fetching maps...");
       const data = await getUserMaps(userId);
-      console.log("Fetched maps:", data);
       if (onSyncMaps) {
         onSyncMaps(data || []);
       }
@@ -99,8 +97,7 @@ export function DashboardPage({
   // Load maps on initial mount
   useEffect(() => {
     fetchMaps();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchMaps]);
 
   // Compute processed maps (mapping node counts/relative dates, filtering, and sorting)
   const processedMaps = useMemo(() => {

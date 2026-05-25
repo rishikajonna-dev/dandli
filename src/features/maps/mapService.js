@@ -2,15 +2,16 @@
 
 import { supabase } from "../../lib/supabase";
 
-function requireUserId(userId) {
-    if (!userId) {
+async function requireSignedInUserId() {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data?.user?.id) {
         throw new Error("A signed-in user is required to access maps.");
     }
-    return userId;
+    return data.user.id;
 }
 
-export async function createMap(userId, map) {
-    const ownerId = requireUserId(userId);
+export async function createMap(_userId, map) {
+    const ownerId = await requireSignedInUserId();
     const finalTitle = typeof map?.title === 'string' && map.title.trim()
         ? map.title.trim()
         : 'Untitled Map';
@@ -31,8 +32,8 @@ export async function createMap(userId, map) {
     return data?.[0];
 }
 
-export async function getMap(userId, id) {
-    const ownerId = requireUserId(userId);
+export async function getMap(_userId, id) {
+    const ownerId = await requireSignedInUserId();
     const { data, error } = await supabase
         .from("maps")
         .select("*")
@@ -47,8 +48,8 @@ export async function getMap(userId, id) {
     return data;
 }
 
-export async function getUserMaps(userId) {
-    const ownerId = requireUserId(userId);
+export async function getUserMaps(_userId) {
+    const ownerId = await requireSignedInUserId();
     const { data, error } = await supabase
         .from("maps")
         .select("*")
@@ -62,8 +63,8 @@ export async function getUserMaps(userId) {
     return data;
 }
 
-export async function updateMap(userId, id, map) {
-    const ownerId = requireUserId(userId);
+export async function updateMap(_userId, id, map) {
+    const ownerId = await requireSignedInUserId();
     const finalTitle = typeof map?.title === 'string' && map.title.trim()
         ? map.title.trim()
         : 'Untitled Map';
@@ -85,8 +86,8 @@ export async function updateMap(userId, id, map) {
     return data?.[0];
 }
 
-export async function deleteMap(userId, id) {
-    const ownerId = requireUserId(userId);
+export async function deleteMap(_userId, id) {
+    const ownerId = await requireSignedInUserId();
     const { error } = await supabase
         .from("maps")
         .delete()

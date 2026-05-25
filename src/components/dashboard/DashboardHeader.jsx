@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search, User } from 'lucide-react';
-import logoAsset from '../../assets/logo.png';
+import logoAsset from '../../assets/logo.webp';
 
 export function DashboardHeader({ searchQuery, setSearchQuery, onConvertNotes, onNewMap, onSignOut }) {
   return (
@@ -35,7 +35,7 @@ export function DashboardHeader({ searchQuery, setSearchQuery, onConvertNotes, o
       <div className="header-right">
         <button 
           type="button" 
-          className="glass-btn glass-lavender" 
+          className="glass-btn glass-warm" 
           onClick={onConvertNotes}
         >
           Convert Notes
@@ -47,20 +47,14 @@ export function DashboardHeader({ searchQuery, setSearchQuery, onConvertNotes, o
         >
           Build from Scratch
         </button>
-        <div className="avatar-circle" title="User Settings">
+        <button type="button" className="avatar-circle" aria-label="User settings">
           <User size={18} />
-        </div>
+        </button>
         {onSignOut && (
           <button 
             type="button" 
-            className="glass-btn" 
+            className="glass-btn sign-out-btn" 
             onClick={onSignOut}
-            style={{ 
-              marginLeft: '8px', 
-              background: 'rgba(0,0,0,0.04)', 
-              border: '1px solid rgba(0,0,0,0.08)',
-              color: '#555'
-            }}
           >
             Sign Out
           </button>

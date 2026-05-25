@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 export function useHistory(initialPresent) {
   const [state, setState] = useState({
@@ -54,7 +54,7 @@ export function useHistory(initialPresent) {
     });
   }, []);
 
-  return {
+  return useMemo(() => ({
     past: state.past,
     present: state.present,
     future: state.future,
@@ -64,5 +64,5 @@ export function useHistory(initialPresent) {
     redo,
     canUndo: state.past.length > 0,
     canRedo: state.future.length > 0
-  };
+  }), [redo, replacePresent, setPresent, state.future, state.past, state.present, undo]);
 }
