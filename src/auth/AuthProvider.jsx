@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { identifyUser, trackSignUpCompleted } from '../lib/analytics.js';
 
 const AuthContext = createContext(null);
 
@@ -19,13 +20,22 @@ export function AuthProvider({ children }) {
       if (error) {
         console.error('Failed to hydrate auth session:', error);
       }
+      if (data?.session?.user) {
+        identifyUser(data.session.user);
+      }
       setSession(data?.session ?? null);
       setLoading(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (nextSession?.user) {
+        identifyUser(nextSession.user);
+      }
+      if (event === 'SIGNED_IN' && nextSession?.user) {
+        trackSignUpCompleted(nextSession.user);
+      }
       setSession(nextSession);
       setLoading(false);
     });

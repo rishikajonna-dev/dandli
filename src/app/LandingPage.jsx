@@ -1,14 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import BoomerangVideoBg from './BoomerangVideoBg.jsx';
 import logoAsset from '../assets/logo.webp';
 import { useAuth } from '../auth/AuthProvider.jsx';
 import { AuthPage } from './AuthPage.jsx';
+import { trackLandingViewed } from '../lib/analytics.js';
 
 const BG_VIDEO =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260511_131941_d136af49-e243-493a-be14-6ff3f24e09e6.mp4';
 
 export function LandingPage({ onNavigate, showAuth }) {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!showAuth) {
+      trackLandingViewed();
+    }
+  }, [showAuth]);
 
   const handleGetStarted = (e) => {
     if (e) e.preventDefault();

@@ -10,6 +10,7 @@ import { createMap, deleteMap, updateMap } from '../features/maps/mapService.js'
 import { sampleMap } from '../data/sampleMap.js';
 import { handleGenerateMap } from '../features/ai/handleGenerateMap.js';
 import { FREE_PLAN_LIMITS, isAiGenerationAllowed } from '../features/billing/entitlements.js';
+import { trackEvent } from '../lib/analytics.js';
 
 // The navigateTo function will be defined inside the App component after setRoute is available.
 
@@ -174,9 +175,18 @@ export default function App() {
       const saved = await createMap(user?.id, newMap);
       const dbMap = { ...newMap, id: saved.id };
       history.setPresent((c) => ({ ...c, maps: [dbMap, ...c.maps], activeMapId: dbMap.id, selectedNodeId: dbMap.root.id, editingNodeId: dbMap.root.id }));
+      trackEvent('New Map Created', {
+        map_id: dbMap.id,
+        source: 'blank',
+      });
     } catch (e) {
       console.error('Create map error', e);
       history.setPresent((c) => ({ ...c, maps: [newMap, ...c.maps], activeMapId: newMap.id, selectedNodeId: newMap.root.id, editingNodeId: newMap.root.id }));
+      trackEvent('New Map Created', {
+        map_id: newMap.id,
+        source: 'blank',
+        saved_to_cloud: false,
+      });
     }
     navigateTo('/workspace');
   };
@@ -201,6 +211,10 @@ export default function App() {
       selectedNodeId: newMap.root.id,
       editingNodeId: null,
     }));
+    trackEvent('Template Opened', {
+      template_id: template.id,
+      template_title: template.title,
+    });
     navigateTo('/workspace');
   };
 
@@ -270,6 +284,10 @@ export default function App() {
       setNotes('');
       setContext('');
       setConvertOpen(false);
+      trackEvent('Notes Converted', {
+        map_id: finalMap.id,
+        notes_length: sourceNotes.length,
+      });
       navigateTo('/workspace');
     } catch (e) {
       setError(e.message || 'Error generating map');

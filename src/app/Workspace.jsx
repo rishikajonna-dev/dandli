@@ -12,6 +12,7 @@ import { exportPng } from '../utils/exportPng.js';
 import { exportMarkdown } from '../utils/exportMarkdown.js';
 import { createMap, updateMap } from '../features/maps/mapService.js';
 import { FREE_PLAN_LIMITS, isNodeCreationAllowed } from '../features/billing/entitlements.js';
+import { trackEvent } from '../lib/analytics.js';
 
 function nodeLabel(node) {
   return node?.label ?? node?.title ?? node?.text ?? 'Untitled';
@@ -306,6 +307,9 @@ export function Workspace({
   function handleExportMarkdown() {
     const md = exportMarkdown(map);
     navigator.clipboard?.writeText(md).then(() => {
+      trackEvent('Markdown Copied', {
+        map_id: map.id,
+      });
       setSuccessMessage('Outline copied\nPaste directly into Notion.');
       setTimeout(() => setSuccessMessage(''), 3000);
     }).catch(() => {
