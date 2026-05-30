@@ -1,4 +1,6 @@
 // src/lib/supabase.js
+console.log("ENV:", import.meta.env)
+console.log("URL:", import.meta.env.VITE_SUPABASE_URL)
 
 import { createClient } from "@supabase/supabase-js";
 

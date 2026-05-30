@@ -8,6 +8,8 @@ export const NodeCard = React.memo(function NodeCard({
   hovered,
   highlighted,
   dimmed,
+  dimmedConnected,
+  dimmedUnrelated,
   editing,
   zoom,
   collapsed,
@@ -41,7 +43,6 @@ export const NodeCard = React.memo(function NodeCard({
     transform: `translate(${layoutNode.left}px, ${layoutNode.top}px)`,
     background: layoutNode.depth === 0 ? '#242321' : rgba(layoutNode.branchColor, layoutNode.depth === 1 ? 0.16 : 0.11),
     boxShadow: selected ? '0 10px 30px rgba(0,0,0,0.12)' : '0 6px 18px rgba(0,0,0,0.06)',
-    opacity: dimmed ? 0.2 : 1,
     color: layoutNode.depth === 0 ? '#fffaf3' : '#252320',
     borderColor: selected || hovered || highlighted ? rgba(layoutNode.branchColor, 0.42) : 'rgba(33, 31, 28, 0.08)'
   };
@@ -60,6 +61,8 @@ export const NodeCard = React.memo(function NodeCard({
         selected ? 'is-selected' : '',
         hovered ? 'is-hovered' : '',
         highlighted ? 'is-highlighted' : '',
+        dimmedConnected ? 'dimmed-connected' : '',
+        dimmedUnrelated ? 'dimmed-unrelated' : '',
         layoutNode.isCollapsedIndicator ? 'is-more' : ''
       ].filter(Boolean).join(' ')}
       style={style}

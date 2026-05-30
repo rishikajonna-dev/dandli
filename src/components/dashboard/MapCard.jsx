@@ -1,160 +1,247 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, Edit2, Copy, Trash2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { MoreVertical, Edit2, Copy, Trash2, Star } from 'lucide-react';
 
-const CARD_THEMES = [
-  { bg: '#F5F1E8', stroke: '#9A7A4F', node: '#7D6848', center: '#2F2A23' },
-  { bg: '#EEF4EA', stroke: '#7F9B72', node: '#5E7658', center: '#1F3728' },
-  { bg: '#F6F0EA', stroke: '#B08B6A', node: '#8A6A52', center: '#3A2E26' },
-  { bg: '#EEF2EF', stroke: '#7C9085', node: '#61766A', center: '#25352E' },
-  { bg: '#F4F1EC', stroke: '#A19A88', node: '#787262', center: '#302E29' },
-  { bg: '#F0F3ED', stroke: '#899C7C', node: '#66785A', center: '#263326' }
-];
+function MiniMapPreview({ map }) {
+  // Use map.id to deterministically seed the layout variation
+  const seed = map.id?.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) ?? 0;
+  
+  // Custom minimal palettes matching the user's design document exactly
+  const palettes = [
+    // 1. Sage Green
+    { bg: '#F5F6F2', center: '#9CAE96', stroke: '#A6B7A0', primary: '#A6B7A0', secondary: '#BCCBBA' },
+    // 2. Warm Sand
+    { bg: '#F8F4EE', center: '#D9C3B0', stroke: '#E5D5C6', primary: '#DEC9B7', secondary: '#EAE0D5' },
+    // 3. Slate Blue
+    { bg: '#F3F5F7', center: '#9FAEB5', stroke: '#B5C2C9', primary: '#A9B8BE', secondary: '#C3CCD2' },
+    // 4. Muted Lavender
+    { bg: '#F6F4F7', center: '#A49FB6', stroke: '#B9B5C9', primary: '#ADA8BE', secondary: '#C6C3D2' },
+    // 5. Muted Terracotta
+    { bg: '#F9F3F1', center: '#DBA392', stroke: '#E7BFB3', primary: '#E0AD9E', secondary: '#ECDDD8' }
+  ];
+  const pal = palettes[seed % palettes.length];
+
+  const VW = 280;
+  const VH = 160;
+  const CX = VW / 2;
+  const CY = VH / 2;
+
+  // Generate radial branches deterministically but asymmetrically
+  const numBranches = 6 + (seed % 4); // 6 to 9 branches
+  const branches = [];
+
+  for (let i = 0; i < numBranches; i++) {
+    const baseAngle = (i * 2 * Math.PI) / numBranches;
+    // Controlled offset to avoid clinical/perfect symmetry
+    const jitter = (((seed + i * 17) % 9) - 4) * 0.05;
+    const angle = baseAngle + jitter;
+
+    // Branches can be short, medium, or long
+    const lengthType = (seed + i * 13) % 3;
+    const dist1 = 34 + lengthType * 9 + ((seed + i * 7) % 3) * 3; // primary distance
+
+    // Decide if primary node is hollow or solid
+    const isHollow1 = ((seed + i * 19) % 5) === 0;
+    const r1 = 3 + ((seed + i * 11) % 3) * 1.0; // primary radius (3.0 to 5.0)
+
+    const subNodes = [];
+    
+    // Add subnodes to some branches to establish an organic hierarchy rhythm
+    const hasSubNode = ((seed + i * 29) % 3) > 0;
+    if (hasSubNode) {
+      const dist2 = dist1 + 12 + ((seed + i * 23) % 3) * 3;
+      const isHollow2 = ((seed + i * 31) % 6) === 0;
+      const r2 = 1.8 + ((seed + i * 37) % 2) * 0.8; // secondary radius
+      subNodes.push({ dist: dist2, r: r2, hollow: isHollow2 });
+
+      // Extremely small tertiary node at the tip for visual detail
+      const hasTertiary = ((seed + i * 43) % 4) === 0;
+      if (hasTertiary) {
+        subNodes.push({ dist: dist2 + 8, r: 1.0, hollow: false });
+      }
+    }
+
+    branches.push({
+      angle,
+      dist1,
+      r1,
+      hollow1: isHollow1,
+      subNodes
+    });
+  }
+
+  return (
+    <div className="map-card-preview" style={{ background: pal.bg }}>
+      <svg
+        viewBox={`0 0 ${VW} ${VH}`}
+        xmlns="http://www.w3.org/2000/svg"
+        className="map-card-svg"
+        aria-hidden="true"
+      >
+        {/* Render radiating connection lines */}
+        {branches.map((b, idx) => {
+          const x1 = CX + b.dist1 * Math.cos(b.angle);
+          const y1 = CY + b.dist1 * Math.sin(b.angle);
+
+          // Lines are thin, elegant and muted
+          const lines = [
+            <line
+              key={`line-1-${idx}`}
+              x1={CX}
+              y1={CY}
+              x2={x1}
+              y2={y1}
+              stroke={pal.stroke}
+              strokeWidth="0.8"
+              opacity="0.65"
+            />
+          ];
+
+          let prevX = x1;
+          let prevY = y1;
+
+          b.subNodes.forEach((sub, subIdx) => {
+            const sx = CX + sub.dist * Math.cos(b.angle);
+            const sy = CY + sub.dist * Math.sin(b.angle);
+            lines.push(
+              <line
+                key={`line-sub-${idx}-${subIdx}`}
+                x1={prevX}
+                y1={prevY}
+                x2={sx}
+                y2={sy}
+                stroke={pal.stroke}
+                strokeWidth="0.8"
+                opacity="0.5"
+              />
+            );
+            prevX = sx;
+            prevY = sy;
+          });
+
+          return <g key={`branch-lines-${idx}`}>{lines}</g>;
+        })}
+
+        {/* Render nodes: Primary nodes & Subnodes */}
+        {branches.map((b, idx) => {
+          const x1 = CX + b.dist1 * Math.cos(b.angle);
+          const y1 = CY + b.dist1 * Math.sin(b.angle);
+
+          const nodesMarkup = [
+            <circle
+              key={`node-1-${idx}`}
+              cx={x1}
+              cy={y1}
+              r={b.r1}
+              fill={b.hollow1 ? 'transparent' : pal.primary}
+              stroke={pal.stroke}
+              strokeWidth={b.hollow1 ? '0.9' : '0'}
+              opacity="0.85"
+            />
+          ];
+
+          b.subNodes.forEach((sub, subIdx) => {
+            const sx = CX + sub.dist * Math.cos(b.angle);
+            const sy = CY + sub.dist * Math.sin(b.angle);
+            nodesMarkup.push(
+              <circle
+                key={`node-sub-${idx}-${subIdx}`}
+                cx={sx}
+                cy={sy}
+                r={sub.r}
+                fill={sub.hollow ? 'transparent' : pal.secondary}
+                stroke={pal.stroke}
+                strokeWidth={sub.hollow ? '0.8' : '0'}
+                opacity="0.75"
+              />
+            );
+          });
+
+          return <g key={`branch-nodes-${idx}`}>{nodesMarkup}</g>;
+        })}
+
+        {/* Central Anchor Anchor: Single dominant center circle */}
+        <circle
+          cx={CX}
+          cy={CY}
+          r="14"
+          fill={pal.center}
+          opacity="0.9"
+        />
+      </svg>
+    </div>
+  );
+}
 
 export function MapCard({ map, index, onOpen, onRename, onDuplicate, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const theme = CARD_THEMES[index % CARD_THEMES.length];
-  const nodeCount = map.nodeCount || 0;
-  const timeString = map.timeString || 'Recently';
+  const nodeCount = (map?.data?.nodes || map?.nodes || []).length;
+
+  const updatedAt = map.updated_at
+    ? (() => {
+        const diff = Date.now() - new Date(map.updated_at).getTime();
+        const mins = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+        if (mins < 1) return 'Just now';
+        if (mins < 60) return `${mins}m ago`;
+        if (hours < 24) return `${hours}h ago`;
+        if (days === 1) return 'Yesterday';
+        return new Date(map.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      })()
+    : '';
 
   useEffect(() => {
-    function handleDocumentClick(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false);
-      }
-    }
-    if (menuOpen) {
-      document.addEventListener('click', handleDocumentClick);
-    }
-    return () => document.removeEventListener('click', handleDocumentClick);
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
   return (
-    <div 
-      className="map-card card-entrance" 
-      onClick={() => onOpen(map.id)}
-      role="button"
+    <article
+      className="map-card"
+      style={{ animationDelay: `${index * 60}ms` }}
+      onClick={() => onOpen?.(map.id)}
       tabIndex={0}
-      aria-label={`Open ${map.title || 'Untitled Map'}`}
-      style={{ 
-        backgroundColor: '#FFFFFF', 
-        borderColor: '#EBEBE8',
-        animationDelay: `${index * 0.08}s`
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen(map.id);
-        }
-      }}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen?.(map.id)}
+      aria-label={`Open ${map.title || 'Untitled'}`}
     >
-      {/* Floating Kebab Options */}
-      <div className="kebab-menu-container" ref={menuRef} onClick={(e) => e.stopPropagation()}>
-        <button 
-          type="button" 
-          className={`thumb-kebab-btn ${menuOpen ? 'menu-active' : ''}`}
-          title="Options"
-          onClick={() => setMenuOpen(!menuOpen)}
-        >
-          <MoreVertical size={16} />
-        </button>
-        
-        {menuOpen && (
-          <div className="kebab-dropdown">
-            <button 
-              type="button" 
-              onClick={() => {
-                setMenuOpen(false);
-                onRename(map);
-              }}
-            >
-              <Edit2 size={13} />
-              Rename
-            </button>
-            <button 
-              type="button" 
-              onClick={() => {
-                setMenuOpen(false);
-                onDuplicate(map);
-              }}
-            >
-              <Copy size={13} />
-              Duplicate
-            </button>
-            <button 
-              type="button" 
-              className="delete-btn"
-              onClick={() => {
-                setMenuOpen(false);
-                onDelete(map);
-              }}
-            >
-              <Trash2 size={13} />
-              Delete
-            </button>
+      <MiniMapPreview map={map} />
+
+      <div className="map-card-meta">
+        <div className="map-card-info">
+          <h3 className="map-card-title">{map.title || 'Untitled'}</h3>
+          <div className="map-card-sub">
+            {updatedAt && <span className="map-card-date">Edited {updatedAt}</span>}
+            {nodeCount > 0 && <span className="map-card-nodes">{nodeCount} nodes</span>}
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Visual Thumbnail (Rounded Pastel Rectangle inside White Card Container) */}
-      <div className="map-thumb" style={{ backgroundColor: theme.bg }}>
-        <svg viewBox="0 0 220 140" className="thumb-svg">
-          {/* Radial Branch Spokes */}
-          <line x1="110" y1="70" x2="60" y2="40" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
-          <line x1="110" y1="70" x2="160" y2="40" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
-          <line x1="110" y1="70" x2="50" y2="70" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
-          <line x1="110" y1="70" x2="170" y2="70" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
-          <line x1="110" y1="70" x2="60" y2="100" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
-          <line x1="110" y1="70" x2="160" y2="100" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
-          <line x1="110" y1="70" x2="110" y2="25" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
-          <line x1="110" y1="70" x2="110" y2="115" stroke={theme.stroke} strokeWidth="1.2" opacity="0.85" />
+        <div className="map-card-actions" onClick={(e) => e.stopPropagation()}>
+          <div className="map-card-menu-wrapper" ref={menuRef}>
+            <button
+              type="button"
+              className="map-card-menu-btn"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label="Map options"
+            >
+              <MoreVertical size={15} />
+            </button>
 
-          {/* Symmetrical Inner Nodes on lines */}
-          <circle cx="85" cy="55" r="2" fill={theme.node} />
-          <circle cx="135" cy="55" r="2" fill={theme.node} />
-          <circle cx="80" cy="70" r="2" fill={theme.node} />
-          <circle cx="140" cy="70" r="2" fill={theme.node} />
-          <circle cx="85" cy="85" r="2" fill={theme.node} />
-          <circle cx="135" cy="85" r="2" fill={theme.node} />
-          <circle cx="110" cy="47" r="2" fill={theme.node} />
-          <circle cx="110" cy="92" r="2" fill={theme.node} />
-
-          {/* Symmetrical Outer Nodes */}
-          <circle cx="60" cy="40" r="3.5" fill={theme.node} />
-          <circle cx="160" cy="40" r="3.5" fill={theme.node} />
-          <circle cx="50" cy="70" r="3.5" fill={theme.node} />
-          <circle cx="170" cy="70" r="3.5" fill={theme.node} />
-          <circle cx="60" cy="100" r="3.5" fill={theme.node} />
-          <circle cx="160" cy="100" r="3.5" fill={theme.node} />
-          <circle cx="110" cy="25" r="3.5" fill={theme.node} />
-          <circle cx="110" cy="115" r="3.5" fill={theme.node} />
-
-          {/* Center Root Node */}
-          <circle cx="110" cy="70" r="6.5" fill={theme.center} />
-          <circle cx="110" cy="70" r="11" stroke={theme.center} strokeWidth="1" fill="none" opacity="0.35" />
-        </svg>
-      </div>
-
-      {/* Info details */}
-      <div className="card-info">
-        <h4 className="card-title">{map.title || 'Untitled Map'}</h4>
-        <div className="card-metadata-row">
-          <span className="card-time">
-            {timeString}
-          </span>
-          <span className="card-metadata-bullet">&bull;</span>
-          <span 
-            className="card-node-count-badge"
-            style={{ 
-              backgroundColor: '#F1F1ED',
-              color: '#6C726F'
-            }}
-          >
-            {nodeCount} {nodeCount === 1 ? 'node' : 'nodes'}
-          </span>
+            {menuOpen && (
+              <div className="map-card-menu" role="menu">
+                <button role="menuitem" className="menu-item--danger" onClick={() => { onDelete?.(map.id); setMenuOpen(false); }}>
+                  <Trash2 size={13} /> Delete
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </article>
   );
 }

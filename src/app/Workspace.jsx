@@ -10,7 +10,7 @@ import { importJsonFile } from '../utils/importJson.js';
 import { exportSvg } from '../utils/exportSvg.js';
 import { exportPng } from '../utils/exportPng.js';
 import { exportMarkdown } from '../utils/exportMarkdown.js';
-import { updateMap } from '../features/maps/mapService.js';
+import { createMap, updateMap } from '../features/maps/mapService.js';
 import { FREE_PLAN_LIMITS, isNodeCreationAllowed } from '../features/billing/entitlements.js';
 
 function nodeLabel(node) {
@@ -85,7 +85,7 @@ export function Workspace({
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [menu, setMenu] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
-  const autosaveStatus = useAutosave('clasp-autosave', appState);
+  const autosaveStatus = useAutosave('clasp-app-state', appState);
 
   // Supabase Database autosave effect
   useEffect(() => {
@@ -126,6 +126,7 @@ export function Workspace({
     replaceAppState((current) => ({ ...current, selectedNodeId: id }));
   }
 
+  // eslint-disable-next-line no-unused-vars
   function setFocusNodeId(id) {
     replaceAppState((current) => ({ ...current, focusNodeId: id }));
   }
@@ -134,6 +135,7 @@ export function Workspace({
     replaceAppState((current) => ({ ...current, editingNodeId: id }));
   }
 
+  // eslint-disable-next-line no-unused-vars
   function setCollapsedNodeIds(updater) {
     setAppState((current) => {
       const next = typeof updater === 'function' ? updater(new Set(current.collapsedNodeIds ?? [])) : updater;
@@ -141,6 +143,7 @@ export function Workspace({
     });
   }
 
+  // eslint-disable-next-line no-unused-vars
   function setExpandedOverflow(updater) {
     setAppState((current) => {
       const next = typeof updater === 'function' ? updater(new Set(current.expandedOverflow ?? [])) : updater;
@@ -164,13 +167,30 @@ export function Workspace({
       return;
     }
     const child = childNode ?? { id: `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, label: 'New idea', children: [], collapsed: false, color: null, metadata: {} };
-    updateCurrentMap((currentMap) => ({ ...currentMap, root: addChildNode(currentMap.root, parentId, child) }));
-    replaceAppState((current) => ({
-      ...current,
-      totalNodesLifetime: (current.totalNodesLifetime ?? countNodes(map.root)) + 1,
-      selectedNodeId: child.id,
-      editingNodeId: child.id
-    }));
+    setAppState((current) => {
+      const currentMap = current.maps.find((item) => item.id === map.id);
+      if (!currentMap) return current;
+
+      const updatedRoot = addChildNode(currentMap.root, parentId, child);
+      const updatedMap = {
+        ...currentMap,
+        root: updatedRoot,
+        updatedAt: new Date().toISOString()
+      };
+
+      const newTotal = countNodes(updatedRoot);
+      const nextCollapsed = new Set(current.collapsedNodeIds ?? []);
+      nextCollapsed.delete(parentId);
+
+      return {
+        ...current,
+        maps: current.maps.map((item) => item.id === map.id ? updatedMap : item),
+        totalNodesLifetime: newTotal,
+        selectedNodeId: child.id,
+        editingNodeId: child.id,
+        collapsedNodeIds: [...nextCollapsed]
+      };
+    });
   }
 
   function addSibling(nodeId = selectedNodeId) {
@@ -186,21 +206,49 @@ export function Workspace({
 
   function deleteSelected(id = selectedNodeId) {
     if (readOnly || !id || id === map.root.id) return;
-    updateCurrentMap((currentMap) => ({ ...currentMap, root: deleteNode(currentMap.root, id) }));
-    replaceAppState((current) => ({ ...current, selectedNodeId: map.root.id, focusNodeId: null, editingNodeId: null }));
+    setAppState((current) => {
+      const currentMap = current.maps.find((item) => item.id === map.id);
+      if (!currentMap) return current;
+
+      const updatedRoot = deleteNode(currentMap.root, id);
+      const updatedMap = {
+        ...currentMap,
+        root: updatedRoot,
+        updatedAt: new Date().toISOString()
+      };
+
+      const nextCollapsed = new Set(current.collapsedNodeIds ?? []);
+      nextCollapsed.delete(id);
+
+      const nextExpanded = new Set(current.expandedOverflow ?? []);
+      nextExpanded.delete(id);
+
+      return {
+        ...current,
+        maps: current.maps.map((item) => item.id === map.id ? updatedMap : item),
+        selectedNodeId: currentMap.root.id,
+        focusNodeId: null,
+        editingNodeId: null,
+        collapsedNodeIds: [...nextCollapsed],
+        expandedOverflow: [...nextExpanded]
+      };
+    });
   }
 
   function toggleCollapse(id = selectedNodeId) {
-    setCollapsedNodeIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    setExpandedOverflow((current) => {
-      const next = new Set(current);
-      next.delete(id);
-      return next;
+    setAppState((current) => {
+      const nextCollapsed = new Set(current.collapsedNodeIds ?? []);
+      if (nextCollapsed.has(id)) nextCollapsed.delete(id);
+      else nextCollapsed.add(id);
+
+      const nextExpanded = new Set(current.expandedOverflow ?? []);
+      nextExpanded.delete(id);
+
+      return {
+        ...current,
+        collapsedNodeIds: [...nextCollapsed],
+        expandedOverflow: [...nextExpanded]
+      };
     });
   }
 
@@ -225,20 +273,51 @@ export function Workspace({
     window.history.replaceState(null, '', url);
   }
 
+  function handleSaveTemplate() {
+    if (readOnly) return;
+    
+    // Promote locally in state
+    setAppState((current) => ({
+      ...current,
+      maps: current.maps.map((item) => {
+        if (item.id !== map.id) return item;
+        const promoted = { ...item };
+        delete promoted.isUnsavedTemplate;
+        return promoted;
+      })
+    }));
+
+    if (userId) {
+      try {
+        const mapToSave = { ...map };
+        delete mapToSave.isUnsavedTemplate;
+        createMap(userId, mapToSave);
+        setSuccessMessage('Saved\nMap added to your dashboard.');
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } catch (err) {
+        console.error("Failed to save template map to Supabase:", err);
+      }
+    } else {
+      setSuccessMessage('Saved\nMap added to your dashboard.');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    }
+  }
+
   function handleExportMarkdown() {
     const md = exportMarkdown(map);
     navigator.clipboard?.writeText(md).then(() => {
-      setSuccessMessage('Markdown copied to clipboard!');
-      setTimeout(() => setSuccessMessage(''), 2500);
+      setSuccessMessage('Outline copied\nPaste directly into Notion.');
+      setTimeout(() => setSuccessMessage(''), 3000);
     }).catch(() => {
       alert('Failed to copy to clipboard.');
     });
   }
 
+  // eslint-disable-next-line no-unused-vars
   function importMap(file) {
     importJsonFile(file).then((imported) => {
       setAppState((current) => ({ ...current, maps: [imported, ...current.maps], activeMapId: imported.id, selectedNodeId: imported.root.id }));
-    }).catch(() => onUpgradeNeeded?.('Import failed. Choose a valid CLASP JSON map.'));
+    }).catch(() => onUpgradeNeeded?.('Import failed. Choose a valid clasp JSON map.'));
   }
 
   const shortcutActions = useMemo(() => ({
@@ -253,7 +332,7 @@ export function Workspace({
     zoomIn: () => window.dispatchEvent(new CustomEvent('clasp-zoom-in')),
     zoomOut: () => window.dispatchEvent(new CustomEvent('clasp-zoom-out')),
     fit: () => window.dispatchEvent(new CustomEvent('clasp-fit'))
-  }), [editingNodeId, redo, selectedNodeId, undo]);
+  }), [addChild, addSibling, selectedNodeId, deleteSelected, toggleCollapse, editingNodeId, map.root.id, undo, redo, setSelectedNodeId, setEditingNodeId]);
 
   useKeyboardShortcuts(shortcutActions, true);
 
@@ -274,10 +353,21 @@ export function Workspace({
   return (
     <div className="workspace">
       <header className="workspace-top">
-        <button type="button" className="back-button" onClick={onBack}>CLASP</button>
+        <button type="button" className="back-button" onClick={onBack}>← Dashboard</button>
         <div>
           <p className="eyebrow">{readOnly ? 'Read-only share' : 'Workspace'}</p>
-          <h1>{typeof map.title === 'string' && map.title.trim() ? map.title : 'Untitled Map'}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <h1>{typeof map.title === 'string' && map.title.trim() ? map.title : 'Untitled Map'}</h1>
+            {map.isUnsavedTemplate && (
+              <button 
+                type="button" 
+                className="save-template-btn"
+                onClick={handleSaveTemplate}
+              >
+                Keep Map
+              </button>
+            )}
+          </div>
         </div>
         <Toolbar
           autosaveStatus={readOnly ? 'Read only' : autosaveStatus}
@@ -291,22 +381,15 @@ export function Workspace({
           onDelete={() => deleteSelected()}
           onUndo={undo}
           onRedo={redo}
-          onZoomIn={() => window.dispatchEvent(new CustomEvent('clasp-zoom-in'))}
-          onZoomOut={() => window.dispatchEvent(new CustomEvent('clasp-zoom-out'))}
-          onFit={() => window.dispatchEvent(new CustomEvent('clasp-fit'))}
           onToggleOutline={() => setOutlineOpen((value) => !value)}
-          onExportJson={() => exportJson(map)}
-          onExportSvg={() => exportSvg(map, appState)}
           onExportPng={() => exportPng(map, appState)}
           onExportMarkdown={handleExportMarkdown}
-          onImportJson={importMap}
           onShare={share}
         />
       </header>
       <div className={`workspace-body ${outlineOpen ? 'with-outline' : ''}`}>
         <MapCanvas
           tree={map.root}
-          selectedNodeId={selectedNodeId}
           setSelectedNodeId={setSelectedNodeId}
           focusNodeId={focusNodeId}
           setFocusNodeId={setFocusNodeId}
@@ -317,10 +400,12 @@ export function Workspace({
           expandedOverflow={expandedOverflow}
           setExpandedOverflow={setExpandedOverflow}
           readOnly={readOnly}
+          selectedNodeId={selectedNodeId}
+          rootId={map.root.id}
+          onAddChild={() => addChild()}
+          onDelete={() => deleteSelected()}
           onToggleOverflow={toggleOverflow}
           onRenameNode={rename}
-          onAddChild={addChild}
-          onDeleteNode={deleteSelected}
           onContextMenu={(nodeId, x, y) => !readOnly && setMenu({ nodeId, x, y })}
         />
         {outlineOpen && (
@@ -335,10 +420,13 @@ export function Workspace({
           />
         )}
       </div>
-      <ContextMenu menu={menu} rootId={map.root.id} onClose={() => setMenu(null)} onAction={handleContextAction} />
+      <ContextMenu menu={menu} onClose={() => setMenu(null)} onAction={handleContextAction} />
       {successMessage && (
         <div className="toast" role="status" aria-live="polite">
-          {successMessage}
+          <div className="toast-title">✓ {successMessage.split('\n')[0]}</div>
+          {successMessage.includes('\n') && (
+            <div className="toast-subtitle">{successMessage.split('\n')[1]}</div>
+          )}
         </div>
       )}
     </div>

@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.landing-page-root {
+  font-family: "Neue Haas Grotesk Display Pro 55 Roman", "Neue Haas Grotesk Text Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: #faf8f5;
+  color: #2b2b2b;
+  min-height: 100vh;
+}
+
+/* Custom localized reset for elements inside the landing page to mimic preflight safely */
+.landing-page-root h1,
+.landing-page-root h2,
+.landing-page-root h3,
+.landing-page-root h4,
+.landing-page-root p,
+.landing-page-root ul,
+.landing-page-root ol,
+.landing-page-root li,
+.landing-page-root a {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: inherit;
+  list-style: none;
+  text-decoration: none;
+  background: none;
+  border: none;
+}
+
+.landing-page-root button {
+  cursor: pointer;
+  outline: none;
+}
+
+.landing-page-root a {
+  color: inherit;
+}

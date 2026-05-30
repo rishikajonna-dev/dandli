@@ -1,6 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function useKeyboardShortcuts(actions, enabled = true) {
+  const actionsRef = useRef(actions);
+
+  useEffect(() => {
+    actionsRef.current = actions;
+  }, [actions]);
+
   useEffect(() => {
     if (!enabled) return undefined;
 
@@ -14,48 +20,48 @@ export function useKeyboardShortcuts(actions, enabled = true) {
 
       if (modifier && event.key.toLowerCase() === 'z' && event.shiftKey) {
         event.preventDefault();
-        actions.redo?.();
+        actionsRef.current.redo?.();
         return;
       }
 
       if (modifier && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        actions.undo?.();
+        actionsRef.current.undo?.();
         return;
       }
 
       if (event.key === 'Tab') {
         event.preventDefault();
-        actions.addChild?.();
+        actionsRef.current.addChild?.();
       } else if (event.key === 'Enter') {
         event.preventDefault();
         if (event.shiftKey) {
-          actions.addSibling?.();
+          actionsRef.current.addSibling?.();
         } else {
-          actions.rename?.();
+          actionsRef.current.rename?.();
         }
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
-        actions.deleteNode?.();
+        actionsRef.current.deleteNode?.();
       } else if (event.key === ' ') {
         event.preventDefault();
-        actions.toggleCollapse?.();
+        actionsRef.current.toggleCollapse?.();
       } else if (event.key === 'Escape') {
         event.preventDefault();
-        actions.escape?.();
+        actionsRef.current.escape?.();
       } else if (event.key === '+' || event.key === '=') {
         event.preventDefault();
-        actions.zoomIn?.();
+        actionsRef.current.zoomIn?.();
       } else if (event.key === '-' || event.key === '_') {
         event.preventDefault();
-        actions.zoomOut?.();
+        actionsRef.current.zoomOut?.();
       } else if (event.key === '0') {
         event.preventDefault();
-        actions.fit?.();
+        actionsRef.current.fit?.();
       }
     }
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [actions, enabled]);
+  }, [enabled]);
 }

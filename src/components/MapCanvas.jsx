@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, Focus, Minus, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Crosshair, Focus, Plus, Trash2 } from 'lucide-react';
 import { Connector } from './Connector.jsx';
 import { NodeCard } from './NodeCard.jsx';
 import { Breadcrumbs } from './Breadcrumbs.jsx';
@@ -246,32 +246,12 @@ export function MapCanvas({
     };
 
     onAddChild(activeSelectedId, childNode);
-    setCollapsedNodeIds((current) => {
-      const next = new Set(current);
-      next.delete(activeSelectedId);
-      return next;
-    });
-    setSelectedNodeId(childId);
-    setEditingNodeId(childId);
   }
 
   function deleteSelected() {
     if (readOnly) return;
     if (activeSelectedId === tree.id) return;
     onDeleteNode(activeSelectedId);
-    setExpandedOverflow((current) => {
-      const next = new Set(current);
-      next.delete(activeSelectedId);
-      return next;
-    });
-    setFocusNodeId(null);
-    setSelectedNodeId(tree.id);
-    setEditingNodeId(null);
-    setCollapsedNodeIds((current) => {
-      const next = new Set(current);
-      next.delete(activeSelectedId);
-      return next;
-    });
     requestAnimationFrame(centerView);
   }
 
@@ -294,7 +274,7 @@ export function MapCanvas({
   }
 
   return (
-    <section className={`map-canvas ${semanticZoomClass}`} aria-label="CLASP mind map">
+    <section className={`map-canvas ${semanticZoomClass} ${activeSelectedId ? 'has-selection' : ''}`} aria-label="CLASP mind map">
       <div className="canvas-toolbar">
         {!readOnly && (
           <>
@@ -323,16 +303,6 @@ export function MapCanvas({
           requestAnimationFrame(centerView);
         }} title="Return to root" aria-label="Return to root">
           <Crosshair size={16} />
-        </button>
-        <span className="tool-divider" />
-        <button type="button" className="tool-button" onClick={zoomPan.zoomOut} title="Zoom out" aria-label="Zoom out">
-          <Minus size={16} />
-        </button>
-        <button type="button" className="tool-button" onClick={zoomPan.zoomIn} title="Zoom in" aria-label="Zoom in">
-          <Plus size={16} />
-        </button>
-        <button type="button" className="tool-button" onClick={zoomPan.reset} title="Reset view" aria-label="Reset view">
-          <RotateCcw size={16} />
         </button>
       </div>
 
@@ -389,8 +359,13 @@ export function MapCanvas({
 
             {visibleNodes.map((layoutNode) => {
               const selected = layoutNode.id === activeSelectedId;
-              const highlighted = relations.highlighted.has(layoutNode.id);
-              const dimmed = activeSelectedId && !highlighted;
+              const isConnected = (relations.ancestors.has(layoutNode.id) || relations.descendants.has(layoutNode.id)) && !selected;
+              const dimmedConnected = activeSelectedId ? isConnected : false;
+              const dimmedUnrelated = activeSelectedId ? (!selected && !isConnected) : false;
+
+              if (activeSelectedId) {
+                console.log(`[Node Focus Audit] Node ID: ${layoutNode.id} | Label: "${layoutNode.label}" | Selected: ${selected} | DimmedConnected: ${dimmedConnected} | DimmedUnrelated: ${dimmedUnrelated}`);
+              }
 
               return (
                 <NodeCard
@@ -398,8 +373,10 @@ export function MapCanvas({
                   layoutNode={layoutNode}
                   selected={selected}
                   hovered={hoveredNodeId === layoutNode.id}
-                  highlighted={highlighted}
-                  dimmed={dimmed}
+                  highlighted={!selected && isConnected}
+                  dimmed={activeSelectedId && !selected}
+                  dimmedConnected={dimmedConnected}
+                  dimmedUnrelated={dimmedUnrelated}
                   editing={editingNodeId === layoutNode.id}
                   zoom={zoomPan.zoom}
                   collapsed={collapsedNodeIds.has(layoutNode.id)}
@@ -416,6 +393,17 @@ export function MapCanvas({
           </div>
         </div>
       </div>
+
+      {!readOnly && (!tree.children || tree.children.length === 0) && (
+        <div className="canvas-onboarding-hint">
+          <div className="onboarding-hint-card">
+            <h4>Start with one thought.</h4>
+            <p>
+              Press <span className="onboarding-hint-plus">+</span> to create a branch and start mapping your thinking.
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

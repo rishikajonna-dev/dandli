@@ -54,7 +54,7 @@ export default function App() {
   const [upgradeMessage, setUpgradeMessage] = useState('');
   const [error, setError] = useState('');
   const [generating, setGenerating] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem('clasp-onboarded') !== 'true' && !sharedMap);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const [storedState, setStoredState] = useLocalStorage('clasp-app-state', null);
   const history = useHistory(
@@ -73,14 +73,14 @@ export default function App() {
         };
       }
       return storedState ?? {
-        maps: [sampleMap],
-        activeMapId: sampleMap.id,
-        selectedNodeId: sampleMap.root.id,
+        maps: [],
+        activeMapId: null,
+        selectedNodeId: null,
         focusNodeId: null,
         editingNodeId: null,
         collapsedNodeIds: [],
         expandedOverflow: [],
-        totalNodesLifetime: 1,
+        totalNodesLifetime: 0,
         aiMapCount: 0,
       };
     })()
@@ -181,6 +181,29 @@ export default function App() {
     navigateTo('/workspace');
   };
 
+  // Create map from template
+  const handleCreateMapFromTemplate = (template) => {
+    const id = crypto.randomUUID();
+    const newMap = {
+      id,
+      title: template.title,
+      root: JSON.parse(JSON.stringify(template.root)),
+      updatedAt: new Date().toISOString(),
+      aiGenerated: false,
+      isUnsavedTemplate: true, // Mark as unsaved template map
+    };
+    
+    // Instantly transition local state for zero-latency exploration
+    history.setPresent((c) => ({
+      ...c,
+      maps: [newMap, ...c.maps],
+      activeMapId: newMap.id,
+      selectedNodeId: newMap.root.id,
+      editingNodeId: null,
+    }));
+    navigateTo('/workspace');
+  };
+
   // Delete map
   const handleDeleteMap = async (id) => {
     try {
@@ -262,15 +285,6 @@ export default function App() {
     setContext('');
   };
 
-  // Onboarding timer
-  useEffect(() => {
-    if (!showOnboarding) return;
-    const timer = setTimeout(() => {
-      localStorage.setItem('clasp-onboarded', 'true');
-      setShowOnboarding(false);
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, [showOnboarding]);
 
   // Authentication redirect effect
   useEffect(() => {
@@ -298,14 +312,9 @@ export default function App() {
 
 // Render based on route
 let mainContent;
-if (route === '/' ) {
-  // Landing page does not need authentication prop
+if (route === '/' || route === '/auth') {
   mainContent = (
-    <LandingPage onNavigate={handleNavigate} />
-  );
-} else if (route === '/auth') {
-  mainContent = (
-    <AuthPage />
+    <LandingPage onNavigate={handleNavigate} showAuth={route === '/auth'} />
   );
 } else if (route === '/app' && !readOnly) {
     mainContent = (
@@ -325,6 +334,7 @@ if (route === '/' ) {
         onDeleteMap={handleDeleteMap}
         onRenameMap={handleRenameMap}
         onSignOut={handleSignOut}
+        onCreateMapFromTemplate={handleCreateMapFromTemplate}
       />
     );
   } else {
@@ -340,7 +350,14 @@ if (route === '/' ) {
         redo={history.redo}
         readOnly={readOnly}
         userId={user?.id}
-        onBack={() => navigateTo('/app')}
+        onBack={() => {
+          // Remove any unsaved template maps when returning to dashboard
+          history.setPresent((c) => ({
+            ...c,
+            maps: c.maps.filter((m) => !m.isUnsavedTemplate),
+          }));
+          navigateTo('/app');
+        }}
         onUpgradeNeeded={setUpgradeMessage}
       />
     );
@@ -422,22 +439,7 @@ if (route === '/' ) {
         </div>
       )}
 
-      {/* Onboarding */}
-      {showOnboarding && (
-        <div className="onboarding-layer">
-          <div className="onboarding-card">
-            <p className="eyebrow">Welcome to CLASP</p>
-            <h2>What’s on your mind right now?</h2>
-            <p>Drop the messy thought. Clasp will help turn it into structure.</p>
-            <button type="button" className="primary-action" onClick={() => { localStorage.setItem('clasp-onboarded', 'true'); setShowOnboarding(false); setError(''); setConvertOpen(true); }}>
-              Start with notes
-            </button>
-            <button type="button" className="secondary-action" onClick={() => { localStorage.setItem('clasp-onboarded', 'true'); setShowOnboarding(false); }}>
-              Skip intro
-            </button>
-          </div>
-        </div>
-      )}
+
     </main>
   );
 }

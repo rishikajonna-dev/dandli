@@ -1,12 +1,12 @@
 export const branchPalette = [
-  '#7F9B72',
-  '#9A7A4F',
-  '#61766A',
-  '#B08B6A',
-  '#899C7C',
-  '#787262',
-  '#5E7658',
-  '#8A6A52'
+  '#9CD4B0', // Sage Green (more saturated)
+  '#F2B898', // Dusty Peach (more saturated)
+  '#C8B8E8', // Soft Lavender (more saturated)
+  '#E0C898', // Warm Sand (more saturated)
+  '#B8D4E8', // Powder Blue (more saturated)
+  '#E8B8C8', // Muted Rose (more saturated)
+  '#A8D8A8', // Soft Mint (more saturated)
+  '#E0D0B8'  // Cream (more saturated)
 ];
 
 export function hexToRgb(hex) {
