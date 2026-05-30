@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { rgba } from '../utils/colors.js';
 
+function isEditableTarget(target) {
+  return ['INPUT', 'TEXTAREA'].includes(target?.tagName) || target?.isContentEditable;
+}
+
 export const NodeCard = React.memo(function NodeCard({
   layoutNode,
   selected,
@@ -82,6 +86,8 @@ export const NodeCard = React.memo(function NodeCard({
         onContextMenu?.(layoutNode.id, event.clientX, event.clientY);
       }}
       onKeyDown={(event) => {
+        if (isEditableTarget(event.target)) return;
+
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           onSelect(layoutNode.id);
@@ -114,6 +120,7 @@ export const NodeCard = React.memo(function NodeCard({
           onChange={(event) => setDraft(event.target.value)}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => {
+            event.stopPropagation();
             if (event.key === 'Enter') commit();
             if (event.key === 'Escape') onEditCancel();
           }}
