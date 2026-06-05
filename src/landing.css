@@ -1,12 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@keyframes slow-zoom-out {
+  0% {
+    transform: scale(1.1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1.1);
+  }
+}
+
+.animate-slow-zoom-out {
+  animation: slow-zoom-out 25s ease-in-out infinite;
+}
+
 .landing-page-root {
-  font-family: "Neue Haas Grotesk Display Pro 55 Roman", "Neue Haas Grotesk Text Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-  background-color: #faf8f5;
-  color: #2b2b2b;
+  background-color: #ffffff;
+  color: #0a0a0a;
   min-height: 100vh;
 }
 
@@ -38,3 +56,12 @@
 .landing-page-root a {
   color: inherit;
 }
+
+.font-playfair {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-inter {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+

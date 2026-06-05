@@ -11,6 +11,7 @@ import { sampleMap } from '../data/sampleMap.js';
 import { handleGenerateMap } from '../features/ai/handleGenerateMap.js';
 import { FREE_PLAN_LIMITS, isAiGenerationAllowed } from '../features/billing/entitlements.js';
 import { trackEvent } from '../lib/analytics.js';
+import { supabase } from '../lib/supabase';
 
 // The navigateTo function will be defined inside the App component after setRoute is available.
 
@@ -56,6 +57,91 @@ export default function App() {
   const [error, setError] = useState('');
   const [generating, setGenerating] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const [onboardedState, setOnboardedState] = useState('loading'); // 'loading', 'not_onboarded', 'onboarded'
+  const [tourStep, setTourStep] = useState(1);
+  const [tourRect, setTourRect] = useState(null);
+
+  // Fetch onboarding state from Supabase when user loads
+  useEffect(() => {
+    if (!user) {
+      setOnboardedState('loading');
+      return;
+    }
+    let active = true;
+    async function fetchOnboarding() {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('onboarded')
+          .eq('id', user.id)
+          .single();
+
+        if (active) {
+          if (error) {
+            console.error('Error fetching onboarding status, assuming not onboarded:', error);
+            setOnboardedState('not_onboarded');
+          } else if (data && data.onboarded === true) {
+            setOnboardedState('onboarded');
+          } else {
+            setOnboardedState('not_onboarded');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching onboarding:', err);
+        if (active) setOnboardedState('not_onboarded');
+      }
+    }
+    fetchOnboarding();
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  // Track target element rect for the active step
+  useEffect(() => {
+    if (route !== '/app' || onboardedState !== 'not_onboarded') {
+      return;
+    }
+
+    const selector = tourStep === 1 ? '.hero-btn-secondary' : '.hero-btn-primary';
+
+    const updateRect = () => {
+      const el = document.querySelector(selector);
+      if (el) {
+        setTourRect(el.getBoundingClientRect());
+      } else {
+        setTourRect(null);
+      }
+    };
+
+    updateRect();
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect);
+    const interval = setInterval(updateRect, 150);
+
+    return () => {
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect);
+      clearInterval(interval);
+    };
+  }, [route, onboardedState, tourStep]);
+
+  const completeOnboarding = async () => {
+    if (!user) return;
+    try {
+      setOnboardedState('onboarded');
+      const { error } = await supabase
+        .from('users')
+        .update({ onboarded: true })
+        .eq('id', user.id);
+      if (error) {
+        console.error('Error updating onboarding status in Supabase:', error);
+      }
+    } catch (err) {
+      console.error('Failed to complete onboarding updates:', err);
+    }
+  };
 
   const [storedState, setStoredState] = useLocalStorage('clasp-app-state', null);
   const history = useHistory(
@@ -457,6 +543,121 @@ if (route === '/' || route === '/auth') {
         </div>
       )}
 
+      {/* Onboarding Tour Overlay */}
+      {route === '/app' && user && onboardedState === 'not_onboarded' && tourRect && (() => {
+        const popoverWidth = 320;
+        let popoverLeft = tourRect.left + tourRect.width / 2 - popoverWidth / 2;
+        if (popoverLeft < 16) popoverLeft = 16;
+        if (popoverLeft + popoverWidth > window.innerWidth - 16) {
+          popoverLeft = window.innerWidth - popoverWidth - 16;
+        }
+        const arrowLeft = tourRect.left + tourRect.width / 2 - popoverLeft;
+        
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 99998, pointerEvents: 'none' }}>
+            <svg style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', pointerEvents: 'auto' }}>
+              <defs>
+                <mask id="tour-cutout-mask">
+                  <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                  <rect
+                    x={tourRect.left - 6}
+                    y={tourRect.top - 6}
+                    width={tourRect.width + 12}
+                    height={tourRect.height + 12}
+                    rx="8"
+                    ry="8"
+                    fill="black"
+                  />
+                </mask>
+              </defs>
+              <rect
+                x="0"
+                y="0"
+                width="100%"
+                height="100%"
+                fill="rgba(0, 0, 0, 0.7)"
+                mask="url(#tour-cutout-mask)"
+              />
+            </svg>
+            
+            <div
+              style={{
+                position: 'fixed',
+                top: tourRect.bottom + 12,
+                left: popoverLeft,
+                background: '#18181b',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '12px',
+                padding: '16px',
+                width: `${popoverWidth}px`,
+                zIndex: 99999,
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)',
+                color: '#fff',
+                fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '-6px',
+                  left: arrowLeft,
+                  transform: 'translateX(-50%) rotate(45deg)',
+                  width: '12px',
+                  height: '12px',
+                  background: '#18181b',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderLeft: '1px solid rgba(255, 255, 255, 0.15)',
+                }}
+              />
+              <div style={{ fontSize: '14px', lineHeight: '1.5', color: '#e4e4e7', marginBottom: '16px', fontWeight: '450' }}>
+                {tourStep === 1
+                  ? 'Paste your messy notes here. AI reads them and builds a structured mind map in seconds.'
+                  : 'Prefer to start fresh? Build your map manually from a blank canvas.'}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                {tourStep === 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setTourStep(2)}
+                    style={{
+                      background: '#ffffff',
+                      color: '#000000',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      transition: 'opacity 0.2s',
+                    }}
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={completeOnboarding}
+                    style={{
+                      background: '#ffffff',
+                      color: '#000000',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      transition: 'opacity 0.2s',
+                    }}
+                  >
+                    Got it
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </main>
   );
